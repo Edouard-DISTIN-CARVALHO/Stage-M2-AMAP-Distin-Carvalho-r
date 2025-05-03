@@ -8,7 +8,7 @@ Supervision: Imma Oliveras Menor, Wesley Jonatar Alves da Cruz, Francisco Navarr
 
 ## Questions : 
 
-###1) **What is the impact of fire on stem respiration of Cerrado trees over time?** 
+### 1) **What is the impact of fire on stem respiration of Cerrado trees over time?** 
 H0 : In the long term, trees subjected to frequent fires would exhibit lower respiration rates.
 H1 : In the long term, trees subjected to frequent fires would has no change in their respiration rates.
 
@@ -17,7 +17,7 @@ H1 : In the long term, trees subjected to frequent fires would has no change in 
 
 **Data:** Compilation of monthly stem respiration data from 2018 to 2024, but we select to use the most recently data of the years of 2023. We don't select the year of 2024 because of the big drougt which happened this year but we will do the same analysis with this data to compare the two ones. 
 
-###2) **How do the  barks functional traits influence the stem respiration of Cerrado trees?** 
+### 2) **How do the  barks functional traits influence the stem respiration of Cerrado trees?** 
 H0 : Trees with thicker bark would have lower respiration rates than trees with thinner bark.
 H1 : Trees with thicker bark would not have changed their respiration rates compared to trees with thinner bark.
 
@@ -32,15 +32,14 @@ Lourenço et al., 2022). So, this relation between would most influence the CO�
 no burned (ESA-04) (Loram-Lourenço et al., 2020 ; Rosell et al., 2014). 
 • Linear Models (LM) of the estimate stem respiration rates as a function of the mean bark trait values as fixed factors. We will determine which bark traits explain most of the variability in stem respiration rates by comparing models using performance criteria (Ávila-Lovera & Winter, 2024). At the same time, we will realize trade-off comparison between the bark traits and relate them to the stem respiration.  
 
-###3) **What is the impact of the barks functional traits in Cerrado trees subjected to variations in fire regime?**
+### 3) **What is the impact of the barks functional traits in Cerrado trees subjected to variations in fire regime?**
 H0 : Trees with thicker bark that are exposed to more frequent fires would have lower respiration rates than trees with thinner bark that experience fewer fires.
 H1 : There are no change of stem respiration between trees exposed to more frequent fire with thicker bark and trees exposed to fewer fires with thinner bark.
 
 **Analyses:**  
 • PCA: to explore the multivariate associations between all bark functional traits and stem respiration in each plots with different fire regimes to observe the associations 
 difference between the plot (Loram-Lourenço et al., 2020 ; Rosell et al., 2014). 
-• GLMM of bark functional trait values as a function of tree species in interaction with fire regimes. Variability between plots will be incorporated into the model as a random factor (Ávila-Lovera & Winter, 2024). We will determine which bark traits explain most of the variability in stem respiration rates by comparing models using performance criteria. 
-At the same time, we will realize trade-off comparison between the bark traits and relate them to the stem respiration of each plot with different fire regime.  
+• Linear Models (LM) of bark functional trait values as a function of tree species in interaction with fire regimes. We will determine which bark traits explain most of the variability in stem respiration rates by comparing models using performance criteria. At the same time, we will realize trade-off comparison between the bark traits and relate them to the stem respiration of each plot with different fire regime.  
 
 **Data:** Continuous quantitative data of the mean bark functional traits and estimate of stem respiration per species and across all the experiment.  
 Estimate of stem respiration of 2023 of all the plot linked with bark functional trait data from the March 2025 campaign. We will compare the value of stem respiration and 
