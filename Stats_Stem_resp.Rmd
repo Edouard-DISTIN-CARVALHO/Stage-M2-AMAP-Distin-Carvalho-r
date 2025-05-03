@@ -1,0 +1,320 @@
+---
+title: "Stage M2 -  Relating patterns in woody stem respiration with bark plant functional
+  traits in Cerrado"
+author: "Edouard DISTIN CARVALHO"
+date: "2025-02-25"
+output: pdf_document
+editor_options: 
+  chunk_output_type: console
+---
+
+# Effect of fire on Stem respiration 
+
+```{r directory, include=FALSE}
+knitr::opts_knit$set(root.dir = "C:/Users/U051-S857/OneDrive/Documents/Fac/Cours/UM/Stage M2/Dados/Stem Respiration")
+```
+
+## Data 
+
+```{r charging and cleaning data, include=FALSE}
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+library(scales)
+library(MASS)
+library(lme4)
+library(glmmTMB)
+library(DHARMa)
+library(emmeans)
+library(ade4)
+library(tidyr)
+
+
+# Stem respiration data 
+stem <- read.csv("C:/Users/U051-S857/OneDrive/Documents/Fac/Cours/UM/Stage M2/Dados/Stem Respiration/stem_efflux_output.csv")  
+stem <- stem %>% 
+  filter(!is.na(flux_umolm2sec))
+stem <- stem[,-c(1,10)]
+stem <- stem %>% 
+  rename(CO2_efflux = flux_umolm2sec)
+stem$date <- as.Date(stem$date, format = "%Y-%m-%d")
+stem <- stem %>%
+  filter(CO2_efflux <= 5, year(date) == 2023)
+stem$sub_plot <- paste(stem$plot_code, "-", stem$sub_plot)
+stem <- stem 
+
+color <- c( "Biennial" = "green4" , "Triennial" = "blue3", "Annual" = "red", "Unburned" = "black")
+
+```
+
+## Plot 
+
+We conserve only the 2023 data to effect of fire after long time burned.The 2024 data was very different than 2023 because of the drought of the year wich affect the data.
+
+```{r plot of 2023 }
+
+ggplot(data = stem, aes(x = date, y = CO2_efflux, color = plot_code)) +
+  geom_point() + geom_line(aes(y = 0), size = 1,  color = "black") +   
+  labs(title = "Variation of stem respiration of tree species along the time",
+       y = "CO2 efflux (µmol/m2_sec)", x = "Month") + 
+  theme_classic() +
+  scale_color_manual(values = color)
+
+stem <- stem %>%
+  filter(CO2_efflux > 0)
+
+ggplot(data = stem, aes(x = date, y = CO2_efflux, color = plot_code)) +
+  geom_point() +   
+  labs(title = "Variation of stem respiration of tree species along the time",
+       y = "CO2 efflux (µmol/m2_sec)", x = "Month") + 
+  theme_classic() +
+  scale_color_manual(values = color)
+
+```
+
+Only ~ 60 negative data  
+
+```{r plot }
+stem <- stem %>%
+  mutate(time = lubridate::hm(datetime))
+
+ggplot(stem, aes(x = time, y = CO2_efflux, color = plot_code)) +
+  geom_point() +
+  labs(title = "Variation of stem respiration of trees species in the day",
+    x = "Time (HH:MM)",
+    y = "Stem respiration (µmol/m2_sec)") +
+  scale_x_time(breaks = breaks_width("1 hour"),labels = label_time("%H:%M")) +
+  theme_light() + theme(axis.text.x = element_text(angle = 45, hjust = 1)) + scale_color_manual(values = color)
+
+ggplot(data = stem, aes(x = air_temp_c, y = CO2_efflux, color = plot_code)) +
+  geom_point() + labs(title = "Variation of stem respiration of trees species across the temperature",
+    y = "C02 efflux (µmol/m2_sec)") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + scale_color_manual(values = color)
+
+```
+
+
+## Modelisation 
+
+### Fire effect on stem respiration 
+
+#### Fire Statut : burned or unburned 
+variable to explain : CO2_efflux 
+Repsonse variable : plot_code - fire_statut - species
+Random effect : tree_tag
+
+```{r Condition of GLMM }
+
+ggplot(stem, aes(x = CO2_efflux)) +
+  geom_histogram(binwidth = 0.1, fill = "skyblue", color = "black") +
+  labs(title = "Distribution of CO2 eflux",
+       x = "CO2 efflux",
+       y = "Frequence") +
+  theme_classic()
+
+```
+
+```{r GLMM fire statut sp}
+stem$fire_statut <- ifelse(stem$plot_code %in% 
+                             c("ESA-05", "ESA-07", "ESA-09"), "Burned", "Unburned")
+
+mod_fire_sp <- glmmTMB(CO2_efflux ~ fire_statut * species + (1|tree_tag),
+  data = stem, family = gaussian(link = "identity"))
+
+# Checking the residuals of the models 
+plot(simulateResiduals(fittedModel = mod_fire_sp))
+
+residuals_fire_sp <- residuals(mod_fire_sp)
+
+ggplot(data = data.frame(residuals_fire_sp), aes(x = residuals_fire_sp)) +
+  geom_histogram(bins = 30, fill = "skyblue", color = "black") +
+  labs(title = "Residuals histogram", x = "Residuals values", y = "Frequency") +
+  theme_minimal()
+
+summary(mod_fire_sp)
+
+#Test Tukey emmeans fire statut sp}
+emmeans_fire_sp <- emmeans(mod_fire_sp, ~ fire_statut | species)
+
+# bo nurned vs burned = mean(emmeans )
+result_fire_sp <- as.data.frame(pairs(emmeans_fire_sp, adjust = "tukey"))
+result_fire_sp <- result_fire_sp %>%
+  filter(!is.na(SE) & !is.na(df) & p.value <= 0.055)
+result_fire_sp
+
+estimate_fire <- summary(emmeans_fire_sp)
+estimate_fire <- estimate_fire %>%
+  filter(!is.na(emmean))
+estimate_fire
+
+mean_data_fire <- estimate_fire %>%
+  group_by(fire_statut) %>%
+  summarise(emmean_CO2_efflux = mean(emmean), 
+            SE_CO2_efflux = sd(emmean) / sqrt(n()), 
+            .groups = 'drop')
+
+ggplot(mean_data_fire, aes(x = emmean_CO2_efflux, y = fire_statut , color = fire_statut)) +  
+  geom_point(size = 4) +  
+  geom_errorbar(aes(xmin = emmean_CO2_efflux - SE_CO2_efflux, xmax = emmean_CO2_efflux + SE_CO2_efflux), width = 0.2) + 
+  labs(title = "Variation of mean CO2 efflux of the plot",
+       x = "CO2 efflux (µmol/m2.sec)", y = "Fire status") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +  
+  scale_colour_manual(values = c("Burned" = "red", "Unburned" = "black"))
+
+
+ggplot(estimate_fire, aes(x = fire_statut, y = emmean, color = fire_statut)) +
+  geom_boxplot() +
+  labs(x = "Estimate emmean CO2 efflux (µmol/m2.sec)", y = "Species") +
+  theme_classic() +
+  theme(axis.text.y = element_text(size = 10)) +
+  ggtitle("Effect of Fire statut on CO2 Efflux Rate by Species") + scale_colour_manual(values = c("Burned" = "red", "Unburned" = "black"))
+
+ggplot(estimate_fire, aes(x = emmean, y = species, color = fire_statut)) +
+  geom_point(size = 3) +
+  geom_errorbarh(aes(xmin = emmean - SE, xmax = emmean + SE), height = 0.2) +
+  labs(x = "Estimate emmean CO2 efflux (µmol/m2.sec)", y = "Species") +
+  theme_classic() +
+  theme(axis.text.y = element_text(size = 10)) +
+  ggtitle("Effect of Fire statut on CO2 Efflux Rate by Species") + scale_colour_manual(values = c("Burned" = "red", "Unburned" = "black"))
+
+```
+
+
+Burned plot  :  p_value =  0.000923 ==> significant (p > 0.05)
+There is a significant difference between the CO2 efflux mean rate of trees in burned plot and unburned plot.
+This mean rate of unburned plot is 1.179991 - 0.432489 ~ 0.747502 µmol/m2.sec.
+Mean rate of burned plot is 1.179991 µmol/m2
+So the mean rate of burned plot is **20% higher** than in the unburned plot.
+
+species = Curatella americana: p_value =  0.0018 ==> significant 
+The means of CO2 efflux are 0.519 µmol/m2.sec (0.20980 ; 0.829) on the unburned plot and 1.163 µmol/m2.sec (0.90342 ; 1.422) burned plot. The mean rate is higher of 0.6435823 µmol/m2.sec in the burned plot than the unburned plot. So for this species, the presence of fire increase the mean rate of CO2 efflux and so the stem respiration.
+ 
+ species = Hancornia speciosa: p_value =  0.0277 ==> significant 
+The means of CO2 efflux are 1.617 µmol/m2.sec (1.21875;2.015) on the unburned plot and 1.021 µmol/m2.sec (0.67085 ; 1.371) burned plot. The difference between us are significant. The mean rate is lower of 0.5958046 µmol/m2.sec in the burned plot than the unburned plot. So for this species, the presence of fire decrease the mean rate of CO2 efflux and so the stem respiration.
+ 
+ species = Myrcia bella: p_value =  0.0142 ==> significant
+The means of CO2 efflux are 0.679 µmol/m2.sec (0.06651 ; 1.291) on the unburned plot and 1.990 µmol/m2.sec(1.13989 ; 2.840) burned plot. The difference between us are significant. The mean rate is higher of 1.3112502 µmol/m2.sec in the burned plot than the unburned plot. So for this species, the presence of fire increase the mean rate of CO2 efflux and so the stem respiration.
+ 
+ species = Vochysia haenkeana: p_value =  0.0010 ==> significant
+ The means of CO2 efflux are 2.906 µmol/m2.sec (2.27303 ; 3.540) on the unburned plot and 1.726 µmol/m2.sec (1.43044 ; 2.022) burned plot. The difference between us are significant (p_value = 0.0016). The mean rate is lower of 1.1799906 µmol/m2.sec in the burned plot than the unburned plot. So for this species, the presence of fire decrease the mean rate of CO2 efflux and so the stem respiration.
+
+#### Effect of fire regime
+
+```{r GLMM plot sp, echo=FALSE}
+stem <- stem %>%
+  mutate(fire_regime = plot_code)
+
+stem$fire_regime <- factor(stem$fire_regime, 
+                                    levels = c("ESA-04", "ESA-05", "ESA-06",
+                                               "ESA-07", "ESA-08", "ESA-09"),
+                            labels = c("Unburned", "Biennial", "Unburned", 
+                                      "Triennial", "Unburned", "Annual"))
+
+mod_plot <- glmmTMB(CO2_efflux ~ fire_regime * species + (1|tree_tag) + (1| plot_code),
+  data = stem, family = gaussian(link = "identity"))
+
+# Checking the residuals of the models 
+plot(simulateResiduals(fittedModel = mod_plot))
+
+residuals_plot <- residuals(mod_plot)
+
+ggplot(data = data.frame(residuals_plot), aes(x = residuals_plot)) +
+  geom_histogram(bins = 30, fill = "skyblue", color = "black") +
+  labs(title = "Residuals histogram", x = "Residuals", y = "Frequency") +
+  theme_minimal()
+
+summary(mod_plot)
+
+#Test Tukey emmeans
+emmeans_plot <- emmeans(mod_plot, ~ fire_regime | species)
+
+result_plot <- as.data.frame(pairs(emmeans_plot, adjust = "tukey"))
+result_plot <- result_plot %>%
+  filter(!is.na(SE) & !is.na(df) & p.value <= 0.056)
+result_plot
+
+estimate_plot <- summary(emmeans_plot)
+estimate_plot <- estimate_plot %>% filter(!is.na(SE))
+write.csv(estimate_plot, "C:/Users/U051-S857/OneDrive/Documents/Fac/Cours/UM/Stage M2/Dados/Result/estimate_stem_resp.csv", row.names = FALSE)
+
+mean_plot <- estimate_plot %>%
+  group_by(fire_regime) %>%
+  summarise(mean_CO2_efflux = mean(emmean), 
+            SE_CO2_efflux = sd(emmean) / sqrt(n()), 
+            .groups = 'drop')
+
+ggplot(mean_plot, aes(y = fire_regime, x = mean_CO2_efflux, color = fire_regime)) +  geom_point(size = 4) +  
+  geom_errorbar(aes(xmin = mean_CO2_efflux - SE_CO2_efflux, xmax = mean_CO2_efflux + SE_CO2_efflux), width = 0.2) +  
+  labs(title = "Variation of mean CO2 efflux of the plot",
+       y = "CO2 efflux (µmol/m2.sec)") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_color_manual(values = color) 
+
+ggplot(estimate_plot, aes(y = species, x = emmean, color = fire_regime)) +
+  geom_point(size = 3) +
+  geom_errorbar(aes(xmin = emmean - SE, xmax = emmean + SE), width = 0.2) +
+  labs(x = "Species", y = "CO2 efflux (µmol/m2.sec)") +
+  theme_classic() +
+  theme(axis.text.y = element_text(size = 10)) +
+  ggtitle("Effect of Fire regime on CO2 Efflux Rate by Species") + scale_colour_manual(values = color)
+
+ggplot(mean_plot, aes(y = fire_regime, x = mean_CO2_efflux, color = fire_regime)) +  geom_point(size = 4) +  
+  geom_errorbar(aes(xmin = mean_CO2_efflux - SE_CO2_efflux, xmax = mean_CO2_efflux + SE_CO2_efflux), width = 0.2) +  
+  labs(title = "Variation of mean CO2 efflux of the firfe regime",
+       y = "CO2 efflux (µmol/m2.sec)") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_color_manual(values = color) 
+
+sp_plot  <- estimate_plot %>%
+  filter(species %in% c("Curatella americana", "Hancornia speciosa", "Myrcia bella", "Vochysia haenkeana"))
+
+ggplot(sp_plot, aes(y = species, x = emmean, color = fire_regime)) +
+  geom_point(size = 3) +
+  geom_errorbar(aes(xmin = emmean - SE, xmax = emmean + SE), width = 0.2) +
+  labs(x = "Species", y = "CO2 efflux (µmol/m2.sec)") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + labs(title = "Effect of Fire on CO2 Efflux Mean Rate by Species",
+       x = "Estimate Emmeans CO2 efflux (µmol/m2.sec)", y = "Species", color = "Fire Regime")  +
+  scale_color_manual(values = color)
+
+```
+
+species = Curatella americana:
+
+Unburned vs Annual: p-value = 0.0358 ==> significant (p < 0.05)
+The mean rate of CO2 efflux is lower by 0.7673 µmol/m².sec in the "Unburned" plot than the "Annual" plot.
+
+species = Hancornia speciosa:
+
+Unburned vs Triennial: p-value = 0.0553 ==> not significant (p > 0.05)
+The mean rate of CO2 efflux is slightly higher by 0.7177 µmol/m².sec in the "Unburned" plot than the "Triennial" plot, but this difference is not statistically significant.
+
+species = Myrcia bella:
+
+Unburned vs Biennial: p-value = 0.0105 ==> significant (p < 0.05)
+The mean rate of CO2 efflux is lower by 1.3112 µmol/m².sec in the "Unburned" plot than the "Biennial" plot.
+
+species = Vochysia haenkeana:
+
+Unburned vs Biennial: p-value = 0.0002 ==> significant (p < 0.01)
+The mean rate of CO2 efflux is higher by 1.8094 µmol/m².sec in the "Unburned" plot than the "Biennial" plot.
+
+Unburned vs Annual: p-value = 0.0256 ==> significant (p < 0.05)
+The mean rate of CO2 efflux is higher by 1.1105 µmol/m².sec in the "Unburned" plot than the "Annual" plot.
+
+ 
+## Conclusion on fire effect :
+
+Observing the estimate mean rate of CO2 efflux of all treees in the burned and unburned plot, we detected a significant difference between them. So the presence of fire in the plot increase significaly 20% the mean rate of CO2 efflux of the tree and so, increase the mean rate of stem respiration. When we look for the mean rate of each species in burned plot, this effect changed. We detected a significant difference between 4 species : Curatella americana, Hancornia speciosa, Myrcia bella and Vochysia haenkeana. For Curatella americana and Myrcia bella, the presence of fire increase significaly the mean rate of CO2 efflux (~0.64 µmol/m2.s and ~1.31 µmol/m2.s) and so the stem respiration. On the contrary, the presence of fire causes a decrease of CO2 efflux for Hancornia speciosa (~ -0.60 µmol/m2.s) and Vochysia haenkeana (~ - 1.18 µmol/m2.s).
+
+When we look at the different fire regimes in each plot, we observe significant variations in CO2 efflux rates. The unburned plot serves as the reference for the model, and the burned plots (ESA-05, ESA-07, and ESA-09) show difference significaly on the mean CO2 efflux rates than in the unburned plot. This suggests that the fire regime increase significaly the stem respiration of ~ 40% for triennial regime, ~ 20% for biennial regime and ~ 56% for annual regime.
+
+In terms of species, the results show that some species exhibit significant differences in CO2 efflux rates across different plots. For Curatella americana, the CO2 efflux rate is higher in the annual plot the unburned, with a significant difference of 0.76 µmol/m2.s. For Hancornia speciosa, the efflux rates in unburned plot are significantly higher than in triennial plot,  with differences of 0.71 µmol/m2.s. This suggests triennial fire regime cause a decrease of the CO2 efflux and so the stem respiration of the tree in this plot. It's the contrary for Myrcia bella which shows a significant reduction of CO2 efflux in biennial plot (~ -1.31 µmol/m2.s) than in the unburned plot. So this fire regime decrease the stem respiration rates for this species. Lastly, Vochysia haenkeana exhibits significantly higher CO2 efflux in the biennial and annual plot tahn in the unburned, with significaly differences of 1.80 µmol/m2.s and 1.11  µmol/m2.s. So the presence of fire cause a decrease of stem respiration too for this species. 
+
+In conclusion, the effect of fire on stem respiration depend of the types of species.In globaly, we find a increase of stem respiration in presence of fire, but this effect is different between the tree. It's the case for Curatela americana and Myrcia bella, but not for Hancornia speciosa and Vochysia haenkeana, that's trees exposed to different type of fire regime shows us a decrease of stem respiration. 
+Now we has to determinate the relation between wood and bark traits with stem respiration and determinate if fire has a influence on this relation. 

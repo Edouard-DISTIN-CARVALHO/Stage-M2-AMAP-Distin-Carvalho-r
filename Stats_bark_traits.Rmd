@@ -1,0 +1,911 @@
+---
+title: "\"Stage M2 -  Relating patterns in woody stem respiration with bark plant
+  functional traits in Cerrado\""
+author: "Edouard DISTIN CARVALHO"
+date: "2025-04-11"
+output: pdf_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r directory, include=FALSE}
+knitr::opts_knit$set(root.dir = "C:/Users/U051-S857/OneDrive/Documents/Fac/Cours/UM/Stage M2/Dados/Traits")
+```
+
+# Bark traits relation on Stem respiration in no burned plot
+
+## Data 
+
+```{r charging and cleaning data, include=FALSE}
+library(readxl)
+library(dplyr)
+
+# Import dataset
+bark <- read_excel("C:/Users/U051-S857/OneDrive/Documents/Fac/Cours/UM/Stage M2/Dados/Traits/bark_traits_final.xlsx")
+
+bark <- bark %>% 
+  rename(SW_D = DBH)
+
+# Data form 
+str(bark)
+bark$tree_tag <-as.numeric(bark$tree_tag) 
+color_plot <- c( "ESA05" = "green3" , "ESA07" = "dodgerblue", "ESA09" = "red", "ESA04" = "black")
+
+```
+
+## Pearson's Correlation Test 
+
+### Bark traits in no_burned plot (ESA-04)
+```{r Pearson Test, echo=FALSE}
+library(corrplot)
+library(MASS)
+library(ggplot2)
+library(GGally)
+library(gridExtra)
+
+bark_no_burned <- bark %>% filter(plot_code == "ESA04")
+bark_traits <- bark_no_burned[, c("SW_D","OB_T", "IB_T", "TB_T", "RB_T", "B_Den", "B_WC")]
+
+# Box-cox transformation for Normality condition 
+boxcox_results <- apply(bark_traits, 2, function(x) {
+  result <- boxcox(x ~ 1, lambda = seq(-2, 2, by = 0.1))  
+  lambda_optimal <- result$x[which.max(result$y)]  
+  return(lambda_optimal)
+})
+boxcox_results
+
+# Box-Cox Application 
+
+bark_2 <- bark_traits
+for(i in 1:ncol(bark_2)) {
+  lambda_optimal <- boxcox_results[i]
+  if(lambda_optimal == 0) {
+    bark_2[, i] <- log(bark_traits[, i] + 1) 
+  } else {
+    bark_2[, i] <- (bark_traits[, i]^lambda_optimal - 1) / lambda_optimal  
+  }
+}
+
+# Normality test : Shapiro-Wilk Test 
+shapiro.test(bark_2$SW_D)
+shapiro.test(bark_2$OB_T)
+shapiro.test(bark_2$IB_T)
+shapiro.test(bark_2$TB_T)
+shapiro.test(bark_2$RB_T)
+shapiro.test(bark_2$B_Den)
+shapiro.test(bark_2$B_WC)
+
+# Pearson Matrix 
+cor_matrix <- cor(bark_2, method = "pearson")
+```
+
+
+```{r Pearson matrix }
+# Pearson Matrix 
+cor_matrix <- cor(bark_2, method = "pearson")
+
+corrplot(cor_matrix, method = "circle", type = "upper", order = "hclust", 
+         addCoef.col = "black", tl.col = "black", tl.srt = 45)
+
+```
+
+ **Positive Correlations :**
+ 
+Outer bark thickness and Total bark thickness : 0.95 ==> very strong positive relationship 
+As the outer bark thickness increases, the total bark thickness also increases.
+
+Relative bark thickness and Outer bark thickness : 0.68 ==> positive correlation 
+Thicker outer bark is associated with greater relative bark thickness.
+
+Bark Density and diameter at breast height: 0.42  ==> positive correlation 
+Larger trees may have denser bark, though the correlation is not very strong.
+
+ **Negative Correlations :**
+Relative Bark thickness and diameter at breast height : -0.70 ==> strong negative correlation
+As the SW_D increases, the relative bark thickness tends to decrease, meaning that larger trees might have thinner relative bark compared to their size.
+
+Bark water content and Outer bark thickness : -0.65 ==> negative relationship 
+Thicker outer bark tends to have lower water content.
+
+Bark water content and Total bark thickness : -0.58 s==> negative relationship
+Thicker bark tends to have lower water content.
+
+### Incluing Wood density in no burned plot
+```{r With wood density, echo=FALSE}
+# List of species for wood traits 
+wood <- read_excel("C:/Users/U051-S857/OneDrive/Documents/Fac/Cours/UM/Stage M2/Dados/Traits/wood_density.xlsx")
+wood$tree_tag <-as.numeric(wood$tree_tag) 
+
+all_traits <- wood %>% 
+  dplyr::left_join(
+    bark %>% 
+      dplyr::select(plot_code, sub_plot, tree_tag, family, species, code, 
+                    SW_D, OB_T, IB_T, TB_T, RB_T, 
+                    OB_fresh_m, IB_fresh_m, B_fresh_m, OB_v, IB_v, B_fresh_v, 
+                    OB_dried_m, IB_dried_m, B_dried_m, B_Den, B_WC),
+    by = c("plot_code", "sub_plot", "tree_tag", "family", "species", "code")
+  ) %>% 
+  dplyr::select(plot_code, sub_plot, tree_tag, family, species, code, 
+                S_fresh_v, S_dried_m, SW_Den, 
+                SW_D, OB_T, IB_T, TB_T, RB_T, 
+                OB_fresh_m, IB_fresh_m, B_fresh_m, OB_v, IB_v, B_fresh_v, 
+                OB_dried_m, IB_dried_m, B_dried_m, B_Den, B_WC)
+                
+
+traits_no_burned <- all_traits %>% filter(plot_code == "ESA04")
+
+traits <- traits_no_burned[, c("SW_D","OB_T", "IB_T", "TB_T", "RB_T", "B_Den", "B_WC", "SW_Den")]
+
+# Box-cox transformation for Normality condition 
+boxcox_results2 <- apply(traits, 2, function(x) {
+  result <- boxcox(x ~ 1, lambda = seq(-2, 2, by = 0.1))  
+  lambda_optimal2 <- result$x[which.max(result$y)]  
+  return(lambda_optimal2)
+})
+
+# Box-Cox Application 
+
+traits_2 <- traits
+for(i in 1:ncol(traits_2)) {
+  lambda_optimal2 <- boxcox_results2[i]
+  if(lambda_optimal2 == 0) {
+    traits_2[, i] <- log(traits[, i] + 1) 
+  } else {
+    traits_2[, i] <- (traits[, i]^lambda_optimal2 - 1) / lambda_optimal2  
+  }
+}
+
+# Normality test : Shapiro-Wilk Test 
+shapiro.test(traits_2$SW_D)
+shapiro.test(traits_2$OB_T)
+shapiro.test(traits_2$IB_T)
+shapiro.test(traits_2$TB_T)
+shapiro.test(traits_2$RB_T)
+shapiro.test(traits_2$B_Den)
+shapiro.test(traits_2$B_WC)
+shapiro.test(traits_2$SW_Den)
+```
+
+
+```{r Pearson Matrix ESA04}
+# Pearson Matrix 
+cor_matrix2 <- cor(traits_2, method = "pearson")
+
+# Heatmap of Pearson matrix 
+corrplot(cor_matrix2, 
+         method = "circle",        
+         type = "upper",          
+         order = "alphabet",        
+         addCoef.col = "black",    
+         tl.col = "black",         
+         tl.srt = 45,              
+         title = "Heatmap ESA-04")
+```
+
+ **Positive Correlations:**
+Outer bark thickness and Total bark thickness : 0.94 ==> very strong positive relationship
+As the outer bark thickness increases, the total bark thickness also increases proportionally.
+  
+Relative bark thickness and Outer bark thickness : 0.74 ==> positive correlation
+Thicker outer bark is associated with a thicker relative bark thickness.
+
+Wood density and Bark density: 0.56 ==> positive relationship
+Trees with higher wood density tend to have thicker bark.
+
+**Negative Correlations:**
+Relative bark thickness Stem_diameter : -0.84 ==> strong negative correlation
+Larger trees (with a higher diameter) tend to have a thinner relative bark thickness. 
+
+Outer bark thickness and Bark water content : -0.60 ==> negative correlation 
+Thicker bark is generally less capable of retaining water.
+
+Total bark thickness and Bark water content: -0.49 ==> negative relationship
+Thicker bark tends to have lower water content.
+
+Relative bark thickness and Bark water content : -0.37 ==> negative relationship 
+Greater relative bark thickness is associated with lower water content in the bark.
+
+**Weak Correlations:**
+There are weak to no significant linear relationships between inner bark thickness and stem diameter, between inner bark thickness and stem density
+
+### Burned plot 
+
+#### Biennial plot : ESA05
+```{r ESA05, include = FALSE}
+traits_ESA05 <- all_traits %>% filter(plot_code == "ESA05")
+
+traits_ESA05 <- traits_ESA05[, c("SW_D","OB_T", "IB_T", "TB_T", "RB_T", "B_Den", "B_WC", "SW_Den")]
+
+
+# Box-cox transformation for Normality condition 
+boxcox_results_ESA05 <- apply(traits_ESA05, 2, function(x) {
+  result <- boxcox(x ~ 1, lambda = seq(-2, 2, by = 0.1))  
+  lambda_optimal_ESA05 <- result$x[which.max(result$y)]  
+  return(lambda_optimal_ESA05)
+})
+
+# Box-Cox Application 
+
+traits_2_ESA05 <- traits_ESA05
+for(i in 1:ncol(traits_2)) {
+  lambda_optimal_ESA05 <- boxcox_results_ESA05[i]
+  if(lambda_optimal_ESA05 == 0) {
+    traits_2_ESA05[, i] <- log(traits_ESA05[, i] + 1) 
+  } else {
+    traits_2_ESA05[, i] <- (traits_2_ESA05[, i]^lambda_optimal_ESA05 - 1) / lambda_optimal_ESA05  
+  }
+}
+
+# Normality test : Shapiro-Wilk Test 
+shapiro.test(traits_2_ESA05$SW_D)
+shapiro.test(traits_2_ESA05$OB_T)
+shapiro.test(traits_2_ESA05$IB_T)
+shapiro.test(traits_2_ESA05$TB_T)
+shapiro.test(traits_2_ESA05$RB_T)
+shapiro.test(traits_2_ESA05$B_Den)
+shapiro.test(traits_2_ESA05$B_WC)
+shapiro.test(traits_2_ESA05$SW_Den)
+
+# Pearson Matrix 
+cor_matrix_ESA05 <- cor(traits_2_ESA05, method = "pearson")
+```
+
+ **Positive Correlations:**
+Outer Bark Thickness and Total Bark Thickness : 0.95 ==> Very strong positive relationship  
+As the outer bark thickness increases, the total bark thickness also increases proportionally.
+
+Outer Bark Thickness and Relative Bark Thickness : 0.78 ==> Moderate positive relationship  
+Thicker bark is associated with higher relative bark thickness, which reveal a beter investment on protection against physical stress.
+
+Stem diameter and Bark Density : 0.38 ==> Positive correlation  
+Larger trees tend to have denser bark.
+
+Bark Density and Stem Wood Density : 0.44 ==> Moderate positive relationship  
+  Trees with denser bark tend to have higher stem wood density.
+
+**Negative Correlations:**
+
+Stem diameter and Relative Bark Thickness: -0.65 ==>bModerate negative relationship  
+Larger trees tend to have lower Relative Bark Thickness, suggesting a trade-off between size and bark toughness.
+
+Bark Density and Bark Water Content : -0.59 ==> Moderate negative correlation 
+Denser bark tends to retain less water, possibly due to the compact structure of the bark.
+
+Bark Water Content and Stem Wood Density : -0.23 ==> Negative relationship  
+Higher wood density in the stem is weakly associated with lower water content in the bark.
+
+Relative Bark Thickness and Bark Water Content : -0.16 ==> Negative relationship  
+Thicker bark (with higher resistance) might have a lower ability to store water.
+
+**Conclusion:**
+The strong negative correlation between relative bark thickness the stem diameter suggests that larger trees tend to have relatively thinner bark 
+= trade-offs between bark investment and other growth strategies which might be an adaptation to accommodate faster growth rates in the trunk.
+For a thicker Bark, there is a strong relationship with other traits : relative bark thickness and bark density. 
+= role of trees protection againts fire 
+
+The negative relationship between bark thickness and bark water content suggests that thicker bark may have a lower capacity to retain water 
+= trade-off with water retention : impact of bark on tree survival in fire-prone environments which influence their water retention capacity.
+
+
+#### Triennial plot : ESA07
+```{r ESA07, include= FALSE}
+traits_burned <- all_traits[, c("SW_D","OB_T", "IB_T", "TB_T", "RB_T", "B_Den", "B_WC", "SW_Den")]
+
+traits_ESA07 <- all_traits %>% filter(plot_code == "ESA07")
+
+traits_ESA07 <- traits_ESA07[, c("SW_D","OB_T", "IB_T", "TB_T", "RB_T", "B_Den", "B_WC", "SW_Den")]
+
+
+# Box-cox transformation for Normality condition 
+boxcox_results_ESA07 <- apply(traits_ESA07, 2, function(x) {
+  result <- boxcox(x ~ 1, lambda = seq(-2, 2, by = 0.1))  
+  lambda_optimal_ESA07 <- result$x[which.max(result$y)]  
+  return(lambda_optimal_ESA07)
+})
+
+# Box-Cox Application 
+
+traits_2_ESA07 <- traits_ESA07
+for(i in 1:ncol(traits_2)) {
+  lambda_optimal_ESA07 <- boxcox_results_ESA07[i]
+  if(lambda_optimal_ESA07 == 0) {
+    traits_2_ESA07[, i] <- log(traits_ESA07[, i] + 1) 
+  } else {
+    traits_2_ESA07[, i] <- (traits_2_ESA07[, i]^lambda_optimal_ESA07 - 1) / lambda_optimal_ESA07  
+  }
+}
+
+# Normality test : Shapiro-Wilk Test 
+shapiro.test(traits_2_ESA07$SW_D)
+shapiro.test(traits_2_ESA07$OB_T)
+shapiro.test(traits_2_ESA07$IB_T)
+shapiro.test(traits_2_ESA07$TB_T)
+shapiro.test(traits_2_ESA07$RB_T)
+shapiro.test(traits_2_ESA07$B_Den)
+shapiro.test(traits_2_ESA07$B_WC)
+shapiro.test(traits_2_ESA07$SW_Den)
+
+# Pearson Matrix 
+cor_matrix_ESA07 <- cor(traits_2_ESA07, method = "pearson")
+```
+
+**Positive Correlations:**
+
+Outer Bark Thickness and Total Bark Thickness: 0.91 ==> Very strong positive relationship
+
+Outer Bark Thickness and Relative Bark Thickness : 0.84 ==> Moderate positive relationship
+Trees with thicker outer bark have relatively thicker bark overall, which is often related to better protection against environmental factors such as fire.
+
+Total Bark Thickness and Relative Bark Thickness : 0.81 ==> Moderate positive relationship
+Thicker bark is associated with higher relative bark thickness, which reveal a better investment on protection against physical stress.
+
+Stem Wood Density (SW_Den) and Outer Bark Thickness (OB_T): 0.16 ==> Positive relationship
+Trees with higher wood density also tend to have slightly thicker outer bark, though the correlation is weak.
+
+**Negative Correlations:**
+
+Stem Diameter and Relative Bark Thickness : -0.59 ==> Moderate negative relationship
+
+Larger trees (with a higher stem diameter) tend to have a thinner relative bark thickness. This trade-off suggests that as trees grow larger in diameter, their bark becomes thinner relative to their size, possibly because of the increased structural demands for trunk growth.
+
+Bark Density and Outer Bark Thickness : -0.51 ==> Moderate negative relationship
+Thicker outer bark tends to be associated with lower bark density. So the thicker bark is less dense, potentially due to a more porous structure that helps with protection against fires or mechanical damage.
+
+Bark Water Content and Outer Bark Thickness : -0.75 ==> Strong negative relationship
+Thicker outer bark tends to have lower water content. So thicker bark is more rigid and dense, reducing its capacity to absorb and retain water.
+
+Bark Density and Bark Water Content : -0.51 ==> Moderate negative relationship
+This is a typical relationship where dense bark is more compact and cannot retain water because of its structural composition.
+
+Conclusion : 
+
+The trade-off between bark thickness and stem growth is noticeable. Larger trees appear to have relatively thinner bark, which may be an adaptation to promote trunk growth, but this reduces the relative protection of the bark.
+
+The negative relationships between bark thickness and water content suggest a trade-off between physical protection and water storage in the bark. Moreover, trees with denser bark tend to contain less water too.So this could be reveal a implications for tree survival in fire-prone environments, where trees with thicker and denser bark may be better protected against fires but have a reduced ability to retain water.
+
+
+#### Annual plot : ESA09
+
+```{r ESA09, include=FALSE}
+traits_burned <- all_traits[, c("SW_D","OB_T", "IB_T", "TB_T", "RB_T", "B_Den", "B_WC", "SW_Den")]
+
+traits_ESA09 <- all_traits %>% filter(plot_code == "ESA09")
+
+traits_ESA09 <- traits_ESA09[, c("SW_D","OB_T", "IB_T", "TB_T", "RB_T", "B_Den", "B_WC", "SW_Den")]
+
+
+# Box-cox transformation for Normality condition 
+boxcox_results_ESA09 <- apply(traits_ESA09, 2, function(x) {
+  result <- boxcox(x ~ 1, lambda = seq(-2, 2, by = 0.1))  
+  lambda_optimal_ESA09 <- result$x[which.max(result$y)]  
+  return(lambda_optimal_ESA09)
+})
+
+# Box-Cox Application 
+
+traits_2_ESA09 <- traits_ESA09
+for(i in 1:ncol(traits_2)) {
+  lambda_optimal_ESA09 <- boxcox_results_ESA09[i]
+  if(lambda_optimal_ESA09 == 0) {
+    traits_2_ESA09[, i] <- log(traits_ESA09[, i] + 1) 
+  } else {
+    traits_2_ESA09[, i] <- (traits_2_ESA09[, i]^lambda_optimal_ESA09 - 1) / lambda_optimal_ESA09  
+  }
+}
+
+# Normality test : Shapiro-Wilk Test 
+shapiro.test(traits_2_ESA09$SW_D)
+shapiro.test(traits_2_ESA09$OB_T)
+shapiro.test(traits_2_ESA09$IB_T)
+shapiro.test(traits_2_ESA09$TB_T)
+shapiro.test(traits_2_ESA09$RB_T)
+shapiro.test(traits_2_ESA09$B_Den)
+shapiro.test(traits_2_ESA09$B_WC)
+shapiro.test(traits_2_ESA09$SW_Den)
+
+# Pearson Matrix 
+cor_matrix_ESA09 <- cor(traits_2_ESA09, method = "pearson")
+```
+
+**Positive Correlations:**
+Total Bark Thickness and Outer Bark Thickness: 0.93 ==> Very strong positive relationship
+
+Outer Bark Thickness and Relative Bark Thickness (RB_T): 0.56 ==> Moderate positive relationship
+The relation between outer bark and relative bark thickness is positive but lesser than the other plot. This suggests that, in this plot, the relation is less important than in the other plot.
+
+Bark Density and Wood Density : 0.35 ==> Moderate positive relationship
+This relationship suggests that trees investing in denser bark also tend to have more compact and structurally stronger wood, but this effect is less pronounced  than in the other plot.
+
+**Negative Correlations:**
+
+Relative Bark Thickness and Stem Diameter : -0.61 ==> Negative relationship
+
+
+Bark Water Content and Outer Bark Thickness : -0.48 ==> Moderate negative relationship
+Thicker outer bark tends to have lower water content. This suggests that as the bark becomes thicker, its ability to absorb and retain water decreases. This may reflect a trade-off where thicker bark, being more rigid and compact, is better suited for protection but less efficient at water retention.
+
+Bark Density and Bark Water Content : -0.61 ==> Negative relationship
+
+Stem Wood Density and Bark Water Content (B_WC): -0.40 ==> Moderate negative relationship
+
+### Trade-off 
+
+```{r Trade-off ESA04 }
+# OBT - RBT
+p1 <- ggplot(traits, aes(x = OB_T, y = RB_T)) + 
+  geom_point() +
+  geom_smooth(method = "lm", color = "black") + 
+  labs(title = "Relation Between OBT and RBT ESA04",
+       x = "Outer bark thickness (mm)",
+       y = "Relative bark thickness (%)") +
+  theme_classic()
+
+model1 <- lm(RB_T ~ OB_T, data = traits)
+r2_1 <- summary(model1)$r.squared  
+p1 <- p1 + annotate("text", x = 5, y = 50, label = paste("R² = ", round(r2_1, 2)), color = "black", size = 5)
+
+# B_Den - SW_Den
+p2 <- ggplot(traits, aes(x = B_Den, y = SW_Den)) + 
+  geom_point() +
+  geom_smooth(method = "lm", color = "black") + 
+  labs(title = "Relation Between B_Den and SW_Den ESA04",
+       x = "Bark density (g/cm3)",
+       y = "Wood density (g/cm3)") +
+  theme_classic()
+
+model2 <- lm(SW_Den ~ B_Den, data = traits)
+r2_2 <- summary(model2)$r.squared  
+p2 <- p2 + annotate("text", x = 0.35, y = 0.7, label = paste("R² = ", round(r2_2, 2)), color = "black", size = 5)
+
+# OBT - B_WC
+p3 <- ggplot(traits, aes(x = OB_T, y = B_WC)) + 
+  geom_point() +
+  geom_smooth(method = "lm", color = "black") + 
+  labs(title = "Relation Between OBT and BWC ESA04",
+       x = "Outer bark thickness (mm)" ,
+       y = "Bark Water Content (%)") +
+  theme_classic()
+
+model3 <- lm(B_WC ~ OB_T, data = traits)
+r2_3 <- summary(model3)$r.squared  
+
+p3 <- p3 + annotate("text", x = 5, y = 125, label = paste("R² = ", round(r2_3, 2)), color = "black", size = 5)
+
+# B_Den - RBT
+p4 <- ggplot(traits, aes(x = B_Den, y = RB_T)) + 
+  geom_point() +
+  geom_smooth(method = "lm", color = "black") + 
+  labs(title = "Relation Between B_Den and RBT ESA04",
+       x = "Bark density (g/cm3)",
+       y = "Relative Bark Thickness (%)") +
+  theme_classic()
+
+model4 <- lm(RB_T ~ B_Den, data = traits)
+r2_4 <- summary(model4)$r.squared 
+
+p4 <- p4 + annotate("text", x = 0.4, y = 25, label = paste("R² = ", round(r2_4, 2)), color = "black", size = 5)
+
+grid.arrange(p1, p2, p3, p4, ncol = 2)
+
+# OBT vs RBT
+p5 <- ggplot(traits_ESA05, aes(x = OB_T, y = RB_T)) + 
+  geom_point(color = "black") +
+  geom_smooth(method = "lm", color = "green3") + 
+  labs(title = "Relation Between OBT and RBT ESA05",
+       x = "Outer bark thickness (mm)",
+       y = "Relative bark thickness (%)") +
+  theme_classic()
+
+model5 <- lm(RB_T ~ OB_T, data = traits_ESA05)
+r2_5 <- summary(model5)$r.squared  # Extraire le R²
+
+p5 <- p5 + annotate("text", x = 5, y = 30, label = paste("R² = ", round(r2_5, 2)), color = "green3", size = 5)
+
+# B_Den vs SW_Den
+p6 <- ggplot(traits_ESA05, aes(x = B_Den, y = SW_Den)) + 
+  geom_point(color = "black") +
+  geom_smooth(method = "lm", color = "green3") + 
+  labs(title = "Relation Between B_Den and SW_Den ESA05",
+       x = "Bark density (g/cm3)",
+       y = "Wood density (g/cm3)") +
+  theme_classic()
+
+model6 <- lm(SW_Den ~ B_Den, data = traits_ESA05)
+r2_6 <- summary(model6)$r.squared  # Extraire le R²
+
+p6 <- p6 + annotate("text", x = 0.2, y = 0.7, label = paste("R² = ", round(r2_6, 2)), color = "green3", size = 5)
+
+# OBT vs B_WC
+p7 <- ggplot(traits_ESA05, aes(x = OB_T, y = B_WC)) + 
+  geom_point(color = "black") +
+  geom_smooth(method = "lm", color = "green3") + 
+  labs(title = "Relation Between OBT and B_wc ESA05",
+       x = "Outer bark thickness (mm)",
+       y = "Bark water content (%)") +
+  theme_classic()
+
+model7 <- lm(B_WC ~ OB_T, data = traits_ESA05)
+r2_7 <- summary(model7)$r.squared  # Extraire le R²
+
+p7 <- p7 + annotate("text", x = 20, y = 200, label = paste("R² = ", round(r2_7, 2)), color = "green3", size = 5)
+
+# B_Den vs RBT
+p8 <- ggplot(traits_ESA05, aes(x = B_Den, y = RB_T)) + 
+  geom_point(color = "black") +
+  geom_smooth(method = "lm", color = "green3") + 
+  labs(title = "Relation Between B_Den and RBT ESA05",
+       x = "Bark Density (g/cm3)",
+       y = "Relative Bark Thickness (%)") +
+  theme_classic()
+
+model8 <- lm(RB_T ~ B_Den, data = traits_ESA05)
+r2_8 <- summary(model8)$r.squared  # Extraire le R²
+
+p8 <- p8 + annotate("text", x = 0.6, y = 25, label = paste("R² = ", round(r2_8, 2)), color = "green3", size = 5)
+
+
+grid.arrange(p5, p6, p7, p8, ncol = 2)
+
+
+# OBT vs RBT
+p9 <- ggplot(traits_ESA07, aes(x = OB_T, y = RB_T)) + 
+  geom_point(color = "black") +
+  geom_smooth(method = "lm", color = "dodgerblue") + 
+  labs(title = "Relation Between OBT and RBT ESA07",
+       x = "Outer bark thickness (mm)",
+       y = "Relative bark thickness (%)") +
+  theme_classic()
+
+model9 <- lm(RB_T ~ OB_T, data = traits_ESA07)
+r2_9 <- summary(model9)$r.squared  # Extraire le R²
+
+p9 <- p9 + annotate("text", x = 9, y = 30, label = paste("R² = ", round(r2_9, 2)), color = "dodgerblue", size = 5)
+
+# B_Den vs SW_Den
+p10 <- ggplot(traits_ESA07, aes(x = B_Den, y = SW_Den)) + 
+  geom_point(color = "black") +
+  geom_smooth(method = "lm", color = "dodgerblue") + 
+  labs(title = "Relation Between B_Den and SW_Den ESA07",
+       x = "Bark density (g/cm3)",
+       y = "Wood density (g/cm3)") +
+  theme_classic()
+
+model10 <- lm(SW_Den ~ B_Den, data = traits_ESA07)
+r2_10 <- summary(model10)$r.squared  # Extraire le R²
+
+p10 <- p10 + annotate("text", x = 0.3, y = 0.7, label = paste("R² = ", round(r2_10, 2)), color = "dodgerblue", size = 5)
+
+# OBT vs B_WC
+p11 <- ggplot(traits_ESA07, aes(x = OB_T, y = B_WC)) + 
+  geom_point(color = "black") +
+  geom_smooth(method = "lm", color = "dodgerblue") + 
+  labs(title = "Relation Between OBT and B_wc ESA07",
+       x = "Outer bark thickness (mm)",
+       y = "Bark water content (%)") +
+  theme_classic()
+
+model11 <- lm(B_WC ~ OB_T, data = traits_ESA07)
+r2_11 <- summary(model11)$r.squared  # Extraire le R²
+
+p11 <- p11 + annotate("text", x = 10, y = 200, label = paste("R² = ", round(r2_11, 2)), color = "dodgerblue", size = 5)
+
+# B_Den vs RBT
+p12 <- ggplot(traits_ESA07, aes(x = B_Den, y = RB_T)) + 
+  geom_point(color = "black") +
+  geom_smooth(method = "lm", color = "dodgerblue") + 
+  labs(title = "Relation Between B_Den and RBT ESA07",
+       x = "Bark Density (g/cm3)",
+       y = "Relative Bark Thickness (%)") +
+  theme_classic()
+
+model12 <- lm(RB_T ~ B_Den, data = traits_ESA07)
+r2_12 <- summary(model12)$r.squared  # Extraire le R²
+
+p12 <- p12 + annotate("text", x = 0.4, y = 30, label = paste("R² = ", round(r2_12, 2)), color = "dodgerblue", size = 5)
+
+
+grid.arrange(p9, p10, p11, p12, ncol = 2)
+
+
+# OBT vs RBT
+p13 <- ggplot(traits_ESA09, aes(x = OB_T, y = RB_T)) + 
+  geom_point(color = "black") +
+  geom_smooth(method = "lm", color = "red") + 
+  labs(title = "Relation Between OBT and RBT ESA09",
+       x = "Outer bark thickness (mm)",
+       y = "Relative bark thickness (%)") +
+  theme_classic()
+
+model13 <- lm(RB_T ~ OB_T, data = traits_ESA09)
+r2_13 <- summary(model13)$r.squared  # Extraire le R²
+
+p13 <- p13 + annotate("text", x = 5, y = 20, label = paste("R² = ", round(r2_13, 2)), color = "red", size = 5)
+
+# B_Den vs SW_Den
+p14 <- ggplot(traits_ESA09, aes(x = B_Den, y = SW_Den)) + 
+  geom_point(color = "black") +
+  geom_smooth(method = "lm", color = "red") + 
+  labs(title = "Relation Between B_Den and SW_Den ESA09",
+       x = "Bark density (g/cm3)",
+       y = "Wood density (g/cm3)") +
+  theme_classic()
+
+model14 <- lm(SW_Den ~ B_Den, data = traits_ESA09)
+r2_14 <- summary(model14)$r.squared  # Extraire le R²
+
+p14 <- p14 + annotate("text", x = 0.3, y = 0.7, label = paste("R² = ", round(r2_14, 2)), color = "red", size = 5)
+
+# OBT vs B_WC
+p15 <- ggplot(traits_ESA09, aes(x = OB_T, y = B_WC)) + 
+  geom_point(color = "black") +
+  geom_smooth(method = "lm", color = "red") + 
+  labs(title = "Relation Between OBT and B_wc ESA09",
+       x = "Outer bark thickness (mm)",
+       y = "Bark water content (%)") +
+  theme_classic()
+
+model15 <- lm(B_WC ~ OB_T, data = traits_ESA09)
+r2_15 <- summary(model15)$r.squared  # Extraire le R²
+
+p15 <- p15 + annotate("text", x = 7, y = 200, label = paste("R² = ", round(r2_15, 2)), color = "red", size = 5)
+
+# B_Den vs RBT
+p16 <- ggplot(traits_ESA09, aes(x = B_Den, y = RB_T)) + 
+  geom_point(color = "black") +
+  geom_smooth(method = "lm", color = "red") + 
+  labs(title = "Relation Between B_Den and RBT ESA09",
+       x = "Bark Density (g/cm3)",
+       y = "Relative Bark Thickness (%)") +
+  theme_classic()
+
+model16 <- lm(RB_T ~ B_Den, data = traits_ESA09)
+r2_16 <- summary(model16)$r.squared  # Extraire le R²
+
+p16 <- p16 + annotate("text", x = 0.35, y = 25, label = paste("R² = ", round(r2_16, 2)), color = "red", size = 5)
+
+
+grid.arrange(p13, p14, p15, p16, ncol = 2)
+
+```
+
+### Heatmap 
+```{r Heatmap }
+
+par(mfrow = c(2, 2))
+
+# Heatmap of Pearson matrix 
+corrplot(cor_matrix2, 
+         method = "circle",        
+         type = "upper",          
+         order = "alphabet",        
+         addCoef.col = "black",    
+         tl.col = "black",         
+         tl.srt = 45,              
+         title = "Heatmap ESA-04")
+
+corrplot(cor_matrix_ESA05, 
+         method = "circle",        
+         type = "upper",          
+         order = "alphabet",        
+         addCoef.col = "black",    
+         tl.col = "green3",         
+         tl.srt = 45,              
+         title = "Heatmap ESA-05")
+
+corrplot(cor_matrix_ESA07, 
+         method = "circle", 
+         type = "upper", 
+         order = "alphabet",
+         addCoef.col = "black", 
+         tl.col = "dodgerblue", 
+         tl.srt = 45, 
+         title = "Heatmap ESA-07")
+
+corrplot(cor_matrix_ESA09, 
+         method = "circle", 
+         type = "upper", 
+         order = "alphabet",
+         addCoef.col = "black", 
+         tl.col = "red", 
+         tl.srt = 45, 
+         title = "Heatmap ESA-09")
+```
+
+
+**Conclusion :** 
+
+Trade-off between growth and protection: The negative correlation between relative bark thickness (RB_T) and stem diameter (DBH) shows that as trees grow larger, they tend to allocate fewer resources to relative bark thickness. This is likely a growth strategy where larger trees prioritize trunk expansion over the investment in bark.
+
+Bark and fire resilience: The positive relationships between bark thickness and relative bark thickness highlight the importance of bark investment in tree survival, especially in fire-prone areas. However, this comes at the cost of water retention, as seen in the negative correlation between bark thickness and water content.
+
+Wood and bark density: The positive correlation between bark density and wood density suggests a broader structural strategy where trees with denser wood also have denser bark, potentially offering better protection against both physical damage and fire.
+
+Water retention trade-off: Trees with thicker bark or denser bark tend to have lower water retention, indicating a trade-off between structural protection and the ability to store water, which may influence the tree's survival under drought conditions or fire stress.
+
+
+## ACP 
+
+### No burned plot : ESA04
+
+```{r  ACP ESA04}
+library(ade4)
+library(ggplot2)
+library(ggrepel)
+library(dplyr)
+
+esa04 <- all_traits %>% filter(plot_code == "ESA04")
+data_acp04 <- esa04[, c("SW_D","OB_T", "IB_T", "TB_T", "RB_T", "B_Den", "B_WC", "SW_Den")]
+
+acp04 <- dudi.pca(data_acp04, scale = TRUE, center = TRUE, scannf = FALSE, nf = 3)
+
+# Extraire et renommer les coordonnées des variables
+var_coords <- as.data.frame(acp04$co[, 1:2])
+colnames(var_coords) <- c("PC1", "PC2")
+var_coords$Variable <- rownames(var_coords)
+
+# Extraire et renommer les coordonnées des individus, puis ajouter la variable "species"
+ind_coords04 <- as.data.frame(acp04$li[, 1:2])
+colnames(ind_coords04) <- c("PC1", "PC2")
+ind_coords04$species <- esa04$species
+
+# Visualisation de l'acp04 avec ggplot2
+plot_acp04 <- ggplot() +
+  # Points pour les individus, colorés par espèce
+  geom_point(data = ind_coords04, aes(x = PC1, y = PC2, color = species), alpha = 0.7) +
+  # Flèches pour les variables (vecteurs)
+  geom_segment(data = var_coords, aes(x = 0, y = 0, xend = PC1, yend = PC2),
+               arrow = arrow(length = unit(0.2, "cm")), color = "black", size = 1) +
+  # Labels pour les variables
+  geom_text_repel(data = var_coords, aes(x = PC1, y = PC2, label = Variable),
+                  color = "black", size = 5) +
+  # Axes avec pourcentages d'inertie expliquée
+  xlab(paste0("PC1 (", round(acp04$eig[1] / sum(acp04$eig) * 100, 1), "%)")) +
+  ylab(paste0("PC2 (", round(acp04$eig[2] / sum(acp04$eig) * 100, 1), "%)")) +
+  labs(title = "acp04 - Variation selon les espèces", color = "Species") +
+  theme_classic() +
+  theme(legend.position = "right")
+
+print(acp04$eig / sum(acp04$eig) * 100)  
+summary(acp04)
+
+```
+
+### Burned plot 
+
+#### Biennial plot : ESA05
+
+```{r  ACP ESA05}
+esa05 <- all_traits %>% filter(plot_code == "ESA05")
+data_acp05 <- esa05[, c("SW_D","OB_T", "IB_T", "TB_T", "RB_T", "B_Den", "B_WC", "SW_Den")]
+
+acp05 <- dudi.pca(data_acp05, scale = TRUE, center = TRUE, scannf = FALSE, nf = 3)
+
+# Extraire et renommer les coordonnées des variables
+var_coords <- as.data.frame(acp05$co[, 1:2])
+colnames(var_coords) <- c("PC1", "PC2")
+var_coords$Variable <- rownames(var_coords)
+
+# Extraire et renommer les coordonnées des individus, puis ajouter la variable "species"
+ind_coords05 <- as.data.frame(acp05$li[, 1:2])
+colnames(ind_coords05) <- c("PC1", "PC2")
+ind_coords05$species <- esa05$species
+
+# Visualisation de l'acp05 avec ggplot2
+plot_acp05 <- ggplot() +
+  # Points pour les individus, colorés par espèce
+  geom_point(data = ind_coords05, aes(x = PC1, y = PC2, color = species), alpha = 0.7) +
+  # Flèches pour les variables (vecteurs)
+  geom_segment(data = var_coords, aes(x = 0, y = 0, xend = PC1, yend = PC2),
+               arrow = arrow(length = unit(0.2, "cm")), color = "black", size = 1) +
+  # Labels pour les variables
+  geom_text_repel(data = var_coords, aes(x = PC1, y = PC2, label = Variable),
+                  color = "black", size = 5) +
+  # Axes avec pourcentages d'inertie expliquée
+  xlab(paste0("PC1 (", round(acp05$eig[1] / sum(acp05$eig) * 100, 1), "%)")) +
+  ylab(paste0("PC2 (", round(acp05$eig[2] / sum(acp05$eig) * 100, 1), "%)")) +
+  labs(title = "acp05 - Variation selon les espèces", color = "Species") +
+  theme_classic() +
+  theme(legend.position = "right")
+
+print(acp05$eig / sum(acp05$eig) * 100)  
+summary(acp05)
+
+```
+
+#### Triennial plot : ESA07
+
+```{r  ACP ESA07}
+esa07 <- all_traits %>% filter(plot_code == "ESA07")
+data_acp07 <- esa07[, c("SW_D","OB_T", "IB_T", "TB_T", "RB_T", "B_Den", "B_WC", "SW_Den")]
+
+acp07 <- dudi.pca(data_acp07, scale = TRUE, center = TRUE, scannf = FALSE, nf = 3)
+
+# Extraire et renommer les coordonnées des variables
+var_coords <- as.data.frame(acp07$co[, 1:2])
+colnames(var_coords) <- c("PC1", "PC2")
+var_coords$Variable <- rownames(var_coords)
+
+# Extraire et renommer les coordonnées des individus, puis ajouter la variable "species"
+ind_coords07 <- as.data.frame(acp07$li[, 1:2])
+colnames(ind_coords07) <- c("PC1", "PC2")
+ind_coords07$species <- esa07$species
+
+# Visualisation de l'acp07 avec ggplot2
+plot_acp07 <- ggplot() +
+  # Points pour les individus, colorés par espèce
+  geom_point(data = ind_coords07, aes(x = PC1, y = PC2, color = species), alpha = 0.7) +
+  # Flèches pour les variables (vecteurs)
+  geom_segment(data = var_coords, aes(x = 0, y = 0, xend = PC1, yend = PC2),
+               arrow = arrow(length = unit(0.2, "cm")), color = "black", size = 1) +
+  # Labels pour les variables
+  geom_text_repel(data = var_coords, aes(x = PC1, y = PC2, label = Variable),
+                  color = "black", size = 5) +
+  # Axes avec pourcentages d'inertie expliquée
+  xlab(paste0("PC1 (", round(acp07$eig[1] / sum(acp07$eig) * 100, 1), "%)")) +
+  ylab(paste0("PC2 (", round(acp07$eig[2] / sum(acp07$eig) * 100, 1), "%)")) +
+  labs(title = "acp07 - Variation selon les espèces", color = "Species") +
+  theme_classic() +
+  theme(legend.position = "right")
+
+print(acp07$eig / sum(acp07$eig) * 100)  
+summary(acp07)
+
+```
+
+#### Annual plot : ESA09
+
+```{r ACP ESA09}
+esa09 <- all_traits %>% filter(plot_code == "ESA09")
+data_acp09 <- esa09[, c("SW_D","OB_T", "IB_T", "TB_T", "RB_T", "B_Den", "B_WC", "SW_Den")]
+
+acp09 <- dudi.pca(data_acp09, scale = TRUE, center = TRUE, scannf = FALSE, nf = 3)
+
+# Extraire et renommer les coordonnées des variables
+var_coords <- as.data.frame(acp09$co[, 1:2])
+colnames(var_coords) <- c("PC1", "PC2")
+var_coords$Variable <- rownames(var_coords)
+
+# Extraire et renommer les coordonnées des individus, puis ajouter la variable "species"
+ind_coords09 <- as.data.frame(acp09$li[, 1:2])
+colnames(ind_coords09) <- c("PC1", "PC2")
+ind_coords09$species <- esa09$species
+
+# Visualisation de l'acp09 avec ggplot2
+plot_acp09 <- ggplot() +
+  # Points pour les individus, colorés par espèce
+  geom_point(data = ind_coords09, aes(x = PC1, y = PC2, color = species), alpha = 0.7) +
+  # Flèches pour les variables (vecteurs)
+  geom_segment(data = var_coords, aes(x = 0, y = 0, xend = PC1, yend = PC2),
+               arrow = arrow(length = unit(0.2, "cm")), color = "black", size = 1) +
+  # Labels pour les variables
+  geom_text_repel(data = var_coords, aes(x = PC1, y = PC2, label = Variable),
+                  color = "black", size = 5) +
+  # Axes avec pourcentages d'inertie expliquée
+  xlab(paste0("PC1 (", round(acp09$eig[1] / sum(acp09$eig) * 100, 1), "%)")) +
+  ylab(paste0("PC2 (", round(acp09$eig[2] / sum(acp09$eig) * 100, 1), "%)")) +
+  labs(title = "acp09 - Variation selon les espèces", color = "Species") +
+  theme_classic() +
+  theme(legend.position = "right")
+
+print(acp09$eig / sum(acp09$eig) * 100)  
+summary(acp09)
+
+```
+
+### Correlation circle 
+
+```{r ACP Circle}
+par(mfrow = c(2,2))
+
+s.corcircle(acp04$co, sub = "ACP Circle ESA04")
+s.corcircle(acp05$co, sub = "ACP Circle ESA05")
+s.corcircle(acp07$co, sub = "ACP Circle ESA07")
+s.corcircle(acp09$co, sub = "ACP Circle ESA09")
+
+plot_acp04
+plot_acp05
+plot_acp07
+plot_acp09
+
+```
+

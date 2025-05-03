@@ -1,0 +1,628 @@
+---
+title: "Stage M2 -  Relating patterns in woody stem respiration with bark plant functional traits in Cerrado"
+author: "Edouard DISTIN CARVALHO"
+date: "2025-02-18"
+output:
+  pdf_document:
+    latex_engine: xelatex
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r directory, include=FALSE}
+knitr::opts_knit$set(root.dir = "C:/Users/U051-S857/OneDrive/Documents/Fac/Cours/UM/Stage M2/Dados/Stem Respiration")
+```
+
+### Data 
+
+```{r charging and cleaning data, include=FALSE}
+library(readr)
+library(readxl)
+library(dplyr)
+library(lubridate)
+library(corrplot)
+library(MASS)
+library(ggplot2)
+library(GGally)
+library(gridExtra)
+library(ggrepel)
+library(dplyr)
+library(FactoMineR)
+library(factoextra)
+library(car)
+library(lme4)
+library(DHARMa)
+library(emmeans)
+
+# Stem respiration data 
+stem <- read.csv("C:/Users/U051-S857/OneDrive/Documents/Fac/Cours/UM/Stage M2/Dados/Result/estimate_stem_resp.csv")  
+stem <- stem[,-c(5:7)]
+stem <- stem %>% 
+  rename(CO2_efflux = emmean)
+
+# Bark traits data 
+bark <- read_excel("C:/Users/U051-S857/OneDrive/Documents/Fac/Cours/UM/Stage M2/Dados/Traits/bark_traits_final.xlsx")
+bark$tree_tag <-as.numeric(bark$tree_tag) 
+bark <- bark %>% 
+  rename(SW_D = DBH)
+
+# Wood traits data 
+wood <- read_excel("C:/Users/U051-S857/OneDrive/Documents/Fac/Cours/UM/Stage M2/Dados/Traits/wood_density.xlsx")
+wood$tree_tag <-as.numeric(wood$tree_tag)
+
+# List of species for all traits
+traits <- merge(bark, wood, by = "tree_tag")
+traits <- traits[,-c(6,13:21,24:30)]
+traits <- traits %>% 
+  rename(plot_code = plot_code.x,
+         sub_plot = sub_plot.x,
+         family = family.x,
+         species = species.x)
+
+mean_traits <- traits %>%
+  group_by(plot_code, species) %>%
+  summarise( 
+    B_Tex = as.character(names(sort(table(B_Tex), decreasing = TRUE))[1]),
+    SW_D = mean(SW_D, na.rm = TRUE), 
+    SW_Den = mean(SW_Den, na.rm = TRUE),
+    OB_T = mean(OB_T, na.rm = TRUE), 
+    IB_T = mean(IB_T, na.rm = TRUE),
+    TB_T = mean(TB_T, na.rm = TRUE),
+    RB_T = mean(RB_T, na.rm = TRUE),
+    B_Den = mean(B_Den, na.rm = TRUE), 
+    B_WC = mean(B_WC, na.rm = TRUE),
+    .groups = 'drop')
+mean_traits$plot_code <- gsub("ESA", "ESA-", mean_traits$plot_code)
+
+mean_traits <- mean_traits %>%
+  mutate(fire_regime = plot_code)
+
+mean_traits$fire_regime <- factor(mean_traits$fire_regime, 
+                                    levels = c("ESA-04", "ESA-05", "ESA-06",
+                                               "ESA-07", "ESA-08", "ESA-09"),
+                            labels = c("Unburned", "Biennial", "Unburned", 
+                                      "Triennial", "Unburned", "Annual"))
+
+# Stem resp + traits data 
+dados <- merge(stem, mean_traits, by = c("species","fire_regime"))
+
+color <- c( "Biennial" = "green4" , "Triennial" = "blue3", "Annual" = "red", "Unburned" = "black")
+
+```
+
+## ACP 
+
+### ESA04
+```{r ACP FactoMineR ESA04}
+esa04 <- dados %>% filter(plot_code == "ESA-04")
+data_acp04 <- esa04[, c("CO2_efflux","SW_D","SW_Den","OB_T", "IB_T", "TB_T", "RB_T", "B_Den", "B_WC")]
+
+# Réalisation de l'ACP avec FactoMineR
+acp04 <- PCA(data_acp04, scale.unit = TRUE, ncp = 3, graph = FALSE)
+
+# Cercle des corrélations
+p1 <- fviz_pca_var(acp04, 
+             col.var = "black", 
+             col.circle = "black", 
+             labelsize = 5) +
+  ggtitle("PCA for ESA-04") +
+  theme_classic()
+
+fviz_pca_biplot(acp04, 
+                axes = c(1, 2), 
+                geom = "point", 
+                col.ind = esa04$B_Tex,
+                label = "var",
+                labelsize = 4) +
+  ggtitle("PCA Biplot - Species vs bark texture ESA0") +
+  theme_classic()
+
+fviz_pca_biplot(acp04, 
+                axes = c(1, 2), 
+                geom = "point", 
+                col.ind = esa04$species,
+                label = "var",  
+                labelsize = 4) +
+  ggtitle("PCA Biplot - Species ESA0") +
+  theme_classic()
+
+# Afficher l'inertie expliquée par chaque composant
+print(acp04$eig / sum(acp04$eig) + 100)
+
+# Résumé de l'ACP
+summary(acp04)
+
+```
+
+### ESA05
+```{r ACP ESA05 }
+esa05 <- dados %>% filter(plot_code == "ESA-05")
+data_acp05 <- esa05[, c("CO2_efflux","SW_D","SW_Den","OB_T", "IB_T", "TB_T", "RB_T", "B_Den", "B_WC")]
+
+# Réalisation de l'ACP avec FactoMineR
+acp05 <- PCA(data_acp05, scale.unit = TRUE, ncp = 3, graph = FALSE)
+
+# Cercle des corrélations
+p2 <- fviz_pca_var(acp05, 
+             col.var = "black", 
+             col.circle = "green3", 
+             labelsize = 5) +
+  ggtitle("PCA for ESA-05") +
+  theme_classic()
+
+fviz_pca_biplot(acp05, 
+                axes = c(1, 2), 
+                geom = "point", 
+                col.ind = esa05$B_Tex,
+                label = "var",
+                labelsize = 4) +
+  ggtitle("PCA Biplot - Species vs bark texture ESA04") +
+  theme_classic()
+
+fviz_pca_biplot(acp05, 
+                axes = c(1, 2), 
+                geom = "point", 
+                col.ind = esa05$species,  
+                label = "var",  
+                labelsize = 4) +
+  ggtitle("PCA Biplot - Species ESA04") +
+  theme_classic()
+
+# Afficher l'inertie expliquée par chaque composant
+print(acp05$eig / sum(acp05$eig) + 100)
+
+# Résumé de l'ACP
+summary(acp05)
+
+```
+
+### ESA07 
+
+```{r ACP ESA07 }
+esa07 <- dados %>% filter(plot_code == "ESA-07")
+data_acp07 <- esa07[, c("CO2_efflux","SW_D","SW_Den","OB_T", "IB_T", "TB_T", "RB_T", "B_Den", "B_WC")]
+
+# Réalisation de l'ACP avec FactoMineR
+acp07 <- PCA(data_acp07, scale.unit = TRUE, ncp = 3, graph = FALSE)
+
+# Cercle des corrélations
+p3 <- fviz_pca_var(acp07, 
+             col.var = "black", 
+             col.circle = "dodgerblue", 
+             labelsize = 5) +
+  ggtitle("PCA for ESA-07") +
+  theme_classic()
+
+fviz_pca_biplot(acp07, 
+                axes = c(1, 2), 
+                geom = "point", 
+                col.ind = esa07$B_Tex,
+                label = "var",
+                labelsize = 4) +
+  ggtitle("PCA Biplot - Species vs bark texture ESA05") +
+  theme_classic()
+
+fviz_pca_biplot(acp07, 
+                axes = c(1, 2), 
+                geom = "point", 
+                col.ind = esa07$species,  
+                label = "var",  
+                labelsize = 4) +
+  ggtitle("PCA Biplot - Species ESA05") +
+  theme_classic()
+
+# Afficher l'inertie expliquée par chaque composant
+print(acp07$eig / sum(acp07$eig) + 100)
+
+# Résumé de l'ACP
+summary(acp07)
+
+```
+
+### ESA09
+
+```{r ACP FactoMineR ESA09 }
+esa09 <- dados %>% filter(plot_code == "ESA-09")
+data_acp09 <- esa09[, c("CO2_efflux","SW_D","SW_Den","OB_T", "IB_T", "TB_T", "RB_T", "B_Den", "B_WC")]
+
+# Réalisation de l'ACP avec FactoMineR
+acp09 <- PCA(data_acp09, scale.unit = TRUE, ncp = 3, graph = FALSE)
+
+# Cercle des corrélations
+p4 <- fviz_pca_var(acp09, 
+             col.var = "black", 
+             col.circle = "red", 
+             labelsize = 5) +
+  ggtitle("PCA for ESA-09") +
+  theme_classic()
+
+fviz_pca_biplot(acp09, 
+                axes = c(1, 2), 
+                geom = "point", 
+                col.ind = esa09$B_Tex,
+                label = "var",
+                labelsize = 4) +
+  ggtitle("PCA Biplot - Species vs bark texture ESA09") +
+  theme_classic()
+
+fviz_pca_biplot(acp09, 
+                axes = c(1, 2), 
+                geom = "point", 
+                col.ind = esa09$species,  
+                label = "var",  
+                labelsize = 4) +
+  ggtitle("PCA Biplot - Species ESA09") +
+  theme_classic()
+
+# Afficher l'inertie expliquée par chaque composant
+print(acp09$eig / sum(acp09$eig) + 100)
+
+# Résumé de l'ACP
+summary(acp09)
+
+```
+
+### ACP plot 
+
+```{r ACP Plot}
+data_acp <- dados[, c("CO2_efflux","SW_D","SW_Den","OB_T", "IB_T", "TB_T", "RB_T", "B_Den", "B_WC")]
+acp <- PCA(data_acp, scale.unit = TRUE, ncp = 3, graph = FALSE)
+
+# Cercle des corrélations
+fviz_pca_var(acp, 
+             col.var = "black", 
+             col.circle = "blue", 
+             labelsize = 5) +
+  ggtitle("PCA for all plots") +
+  theme_classic()
+
+fviz_pca_biplot(acp, 
+                axes = c(1, 2), 
+                geom = "point", 
+                col.ind = dados$plot_code,
+                label = "var",
+                labelsize = 4) +
+  ggtitle("PCA Biplot - Plot ") +
+  theme_classic()
+
+fviz_pca_biplot(acp09, 
+                axes = c(1, 2), 
+                geom = "point", 
+                col.ind = esa09$species,  
+                label = "var",  
+                labelsize = 4) +
+  ggtitle("PCA Biplot - Species ESA09") +
+  theme_classic()
+
+
+```
+
+
+### Circle of correlation
+
+```{r Circle of corelation}
+grid.arrange(p1, p2, p3, p4, ncol = 2)
+
+```
+
+
+## Pearson Correlation 
+
+### ESA04 
+
+```{r Pearson Test, echo=FALSE}
+pearson_esa04 <- data_acp04
+
+# Normality test : Shapiro-Wilk Test 
+shapiro.test(pearson_esa04$CO2_efflux)
+shapiro.test(pearson_esa04$SW_D)
+shapiro.test(pearson_esa04$SW_Den)
+shapiro.test(pearson_esa04$OB_T)
+shapiro.test(pearson_esa04$IB_T)
+shapiro.test(pearson_esa04$TB_T)
+shapiro.test(pearson_esa04$RB_T)
+shapiro.test(pearson_esa04$B_Den)
+shapiro.test(pearson_esa04$B_WC)
+
+# Pearson Matrix 
+cor_matrix_esa04 <- cor(pearson_esa04, method = "pearson")
+```
+
+
+### ESA05 
+
+```{r Pearson Test, echo=FALSE}
+pearson_esa05 <- data_acp05
+
+# Normality test : Shapiro-Wilk Test 
+shapiro.test(pearson_esa05$CO2_efflux)
+shapiro.test(pearson_esa05$SW_D)
+shapiro.test(pearson_esa05$SW_Den)
+shapiro.test(pearson_esa05$OB_T)
+shapiro.test(pearson_esa05$IB_T)
+shapiro.test(pearson_esa05$TB_T)
+shapiro.test(pearson_esa05$RB_T)
+shapiro.test(pearson_esa05$B_Den)
+shapiro.test(pearson_esa05$B_WC)
+
+# Pearson Matrix 
+cor_matrix_esa05 <- cor(pearson_esa05, method = "pearson")
+```
+
+### ESA07 
+
+```{r Pearson Test, echo=FALSE}
+pearson_esa07 <- data_acp07
+
+# Normality test : Shapiro-Wilk Test 
+shapiro.test(pearson_esa07$CO2_efflux)
+shapiro.test(pearson_esa07$SW_D)
+shapiro.test(pearson_esa07$SW_Den)
+shapiro.test(pearson_esa07$OB_T)
+shapiro.test(pearson_esa07$IB_T)
+shapiro.test(pearson_esa07$TB_T)
+shapiro.test(pearson_esa07$RB_T)
+shapiro.test(pearson_esa07$B_Den)
+shapiro.test(pearson_esa07$B_WC)
+
+# Pearson Matrix 
+cor_matrix_esa07 <- cor(pearson_esa07, method = "pearson")
+
+```
+
+### ESA09 
+
+```{r Pearson Test, echo=FALSE}
+pearson_esa09 <- data_acp09
+
+# Normality test : Shapiro-Wilk Test 
+shapiro.test(pearson_esa09$CO2_efflux)
+shapiro.test(pearson_esa09$SW_D)
+shapiro.test(pearson_esa09$SW_Den)
+shapiro.test(pearson_esa09$OB_T)
+shapiro.test(pearson_esa09$IB_T)
+shapiro.test(pearson_esa09$TB_T)
+shapiro.test(pearson_esa09$RB_T)
+shapiro.test(pearson_esa09$B_Den)
+shapiro.test(pearson_esa09$B_WC)
+
+# Pearson Matrix 
+cor_matrix_esa09 <- cor(pearson_esa09, method = "pearson")
+
+```
+
+### Heatmap
+
+```{r Heatmap}
+par(mfrow = c(2, 2))
+
+# Heatmap of Pearson matrix 
+corrplot(cor_matrix_esa04, 
+         method = "circle",        
+         type = "upper",          
+         order = "alphabet",        
+         addCoef.col = "black",    
+         tl.col = "black",         
+         tl.srt = 45,              
+         title = "Heatmap ESA-04")
+
+corrplot(cor_matrix_esa05, 
+         method = "circle",        
+         type = "upper",          
+         order = "alphabet",        
+         addCoef.col = "black",    
+         tl.col = "green3",         
+         tl.srt = 45,              
+         title = "Heatmap ESA-05")
+
+corrplot(cor_matrix_esa07, 
+         method = "circle", 
+         type = "upper", 
+         order = "alphabet",
+         addCoef.col = "black", 
+         tl.col = "dodgerblue", 
+         tl.srt = 45, 
+         title = "Heatmap ESA-07")
+
+corrplot(cor_matrix_esa09, 
+         method = "circle", 
+         type = "upper", 
+         order = "alphabet",
+         addCoef.col = "black", 
+         tl.col = "red", 
+         tl.srt = 45, 
+         title = "Heatmap ESA-09")
+
+```
+
+### Relation 
+```{r Relation traits stem resp}
+
+relation_esa04 <- cor_matrix_esa04[, 1, drop = FALSE]
+relation_esa05 <- cor_matrix_esa05[, 1, drop = FALSE]
+relation_esa07 <- cor_matrix_esa07[, 1, drop = FALSE]
+relation_esa09 <- cor_matrix_esa09[, 1, drop = FALSE]
+
+
+traits_resp <- data.frame(relation_esa04, relation_esa05, 
+                     relation_esa07, relation_esa09)
+traits_resp <- traits_resp %>%
+  rename(ESA04 = CO2_efflux,
+         ESA05 = CO2_efflux.1,
+         ESA07 = CO2_efflux.2,
+         ESA09 = CO2_efflux.3) 
+
+```
+
+```{r Heatmap trait resp}
+h04 <- pearson_esa04[, c("CO2_efflux","SW_D", "TB_T", "B_Den", "B_WC")]
+cor04 <- cor(h04, method = "pearson")
+
+h05 <- pearson_esa05[, c("CO2_efflux","SW_D", "TB_T", "B_Den", "B_WC")]
+cor05 <- cor(h05, method = "pearson")
+
+h07 <- pearson_esa07[, c("CO2_efflux","SW_D", "TB_T", "B_Den", "B_WC")]
+cor07 <- cor(h07, method = "pearson")
+
+h09 <- pearson_esa09[, c("CO2_efflux","SW_D", "TB_T", "B_Den", "B_WC")]
+cor09 <- cor(h09, method = "pearson")
+
+par(mfrow = c(2, 2))
+
+# Heatmap of Pearson matrix 
+corrplot(cor04, 
+         method = "circle",        
+         type = "upper",          
+         order = "alphabet",        
+         addCoef.col = "black",    
+         tl.col = "black",         
+         tl.srt = 45,              
+         title = "Heatmap ESA-04")
+
+corrplot(cor05, 
+         method = "circle",        
+         type = "upper",          
+         order = "alphabet",        
+         addCoef.col = "black",    
+         tl.col = "green3",         
+         tl.srt = 45,              
+         title = "Heatmap ESA-05")
+
+corrplot(cor07, 
+         method = "circle", 
+         type = "upper", 
+         order = "alphabet",
+         addCoef.col = "black", 
+         tl.col = "dodgerblue", 
+         tl.srt = 45, 
+         title = "Heatmap ESA-07")
+
+corrplot(cor09, 
+         method = "circle", 
+         type = "upper", 
+         order = "alphabet",
+         addCoef.col = "black", 
+         tl.col = "red", 
+         tl.srt = 45, 
+         title = "Heatmap ESA-09")
+```
+
+## Trade off 
+
+```{r Trade Off}
+traits <- c("SW_D", "B_Den", "B_WC","TB_T", "SW_Den", "OB_T", "IB_T", "RB_T")
+
+dados <- dados %>%
+  mutate(fire_regime = plot_code) 
+dados$fire_regime <- factor(dados$fire_regime, 
+                                    levels = c("ESA-04", "ESA-05", "ESA-06",
+                                               "ESA-07", "ESA-08", "ESA-09"),
+                            labels = c("Unburned", "Biennial", "Unburned", 
+                                      "Triennial", "Unburned", "Annual"))
+
+generate_graph <- function(trait) {
+  p <- ggplot(dados, aes_string(x = trait, y = "CO2_efflux", color = "fire_regime")) + 
+    geom_point() +
+    geom_smooth(method = "lm", aes(group = fire_regime), se = FALSE) +
+    labs(title = paste("Relation Between CO2 Efflux and", trait),
+         x = trait, y = "CO2 efflux") +
+    theme_classic() +
+    scale_color_manual(values = color)
+  return(p)
+}
+
+plots <- lapply(traits, generate_graph)
+
+grid.arrange(grobs = plots[1:4], nrow = 2, ncol = 2)  
+grid.arrange(grobs = plots[5:8], nrow = 2, ncol = 2)  
+
+```
+
+
+## Modelisation of the trade-off 
+variable to explain : CO2_efflux 
+Repsonse variable qualitative : plot_code * (SW_D + TB_T + B_Den + B_WC)
+Random effect : species 
+Data : dados
+ 
+```{r Condition of Models}
+
+# Normality test : Shapiro-Wilk Test 
+shapiro.test(dados$CO2_efflux)
+shapiro.test(dados$SW_D)
+shapiro.test(dados$TB_T)
+shapiro.test(dados$B_Den)
+shapiro.test(dados$B_WC)
+
+# Levene's Test pour l'homoscédasticité
+leveneTest(CO2_efflux ~ plot_code, data = dados) 
+leveneTest(SW_D ~ plot_code, data = dados) 
+leveneTest(TB_T ~ plot_code, data = dados) 
+leveneTest(B_Den ~ plot_code, data = dados) 
+leveneTest(B_WC ~ plot_code, data = dados) 
+
+```
+ 
+Condition OK 
+
+```{r Best mod}
+
+dados_scaled <- dados %>%
+  mutate(across(c(CO2_efflux, SW_D, OB_T,IB_T,TB_T,SW_Den,RB_T, B_Den, B_WC), scale))
+
+
+drop1(model,.~., test = "F")
+
+model <- lm(CO2_efflux ~ plot_code * (RB_T+B_Den) , data = dados_scaled)
+summary(model)
+anova(model)
+
+model <- lm(CO2_efflux ~ plot_code * (B_Den +B_WC) , data = dados_scaled)
+summary(model)
+anova(model,model1)
+
+
+
+# Modèle 10 : CO2_efflux ~ plot_code * B_Den + B_WC 
+model10 <- lm(CO2_efflux ~ plot_code * (B_Den + B_WC), data = dados_scaled)
+summary(model10)
+
+# Modèle 11 : CO2_efflux ~ plot_code * SW_D + TB_T + B_Den 1e BEST
+model11 <- lm(CO2_efflux ~ plot_code * (SW_D + TB_T + B_Den), data = dados_scaled)
+summary(model11)
+
+# Modèle 13 : CO2_efflux ~ plot_code * SW_D + B_Den + B_WC 3E Best
+model13 <- lm(CO2_efflux ~ plot_code * (SW_D + B_Den + B_WC), data = dados_scaled)
+summary(model13)
+
+
+anova(model10)
+anova(model11)
+anova(model13)
+
+drop1(model10,.~., test = "F")
+drop1(model11,.~., test = "F")
+drop1(model13,.~., test = "F")
+
+
+```
+
+
+```{r Comparaison entre modèle}
+
+plot(simulateResiduals(fittedModel = model10))
+
+residuals <- residuals(model10)
+
+ggplot(data = data.frame(residuals), aes(x = residuals)) +
+  geom_histogram(bins = 30, fill = "skyblue", color = "black") +
+  labs(title = "Residuals histogram", x = "Residuals values", y = "Frequency") + theme_classic()
+
+# Moyennes marginales pour 'plot_code'
+emm <- emmeans(model10, ~ plot_code | B_WC * B_Den)
+
+# Comparaisons multiples avec test de Tukey
+pairs(emm)
+
+```
+
