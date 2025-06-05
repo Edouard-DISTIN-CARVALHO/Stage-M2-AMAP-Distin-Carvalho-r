@@ -1,0 +1,865 @@
+---
+title: "Stage M2 -  Relating patterns in woody stem respiration with bark plant functional
+  traits in Cerrado"
+author: "Edouard DISTIN CARVALHO"
+date: "2025-05-09"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+# I - How does the rate of trees stem respiration vary across the fire regime? 
+
+```{r directory, include=FALSE}
+
+knitr::opts_knit$set(root.dir = "C:/Users/edoua/OneDrive/Documents/Fac/Cours/UM/Stage M2/Dados/Stem Respiration")
+```
+edoua
+## Data Stem respiration
+
+```{r library, include=FALSE}
+library(readr)
+library(readxl)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(lubridate)
+library(scales)
+library(MASS)
+library(lme4)
+library(lmerTest)
+library(glmmTMB)
+library(DHARMa)
+library(emmeans)
+library(ade4)
+library(corrplot)
+library(GGally)
+library(gridExtra)
+library(ggrepel)
+library(FactoMineR)
+library(factoextra)
+library(tibble)
+library(ggpubr)
+library(coin)
+library(purrr)
+```
+
+
+```{r charging and cleaning data, include=FALSE}
+# Stem respiration data 
+stem <- read.csv("C:/Users/edoua/OneDrive/Documents/Fac/Cours/UM/Stage M2/Dados/Stem Respiration/stem_efflux_output.csv")  
+stem <- stem %>% 
+  filter(!is.na(flux_umolm2sec))
+stem <- stem[,-c(1,10)]
+stem <- stem %>% 
+  rename(CO2_efflux = flux_umolm2sec)
+stem$date <- as.Date(stem$date, format = "%Y-%m-%d")
+stem <- stem %>%
+  filter(CO2_efflux <= 5,CO2_efflux >= -1, year(date) == 2023)
+stem$sub_plot <- paste(stem$plot_code, "-", stem$sub_plot)
+
+stem <- stem %>%
+  mutate(fire_regime = plot_code)
+
+stem$fire_regime <- factor(stem$fire_regime, 
+                                    levels = c("ESA-04", "ESA-05", "ESA-06",
+                                               "ESA-07", "ESA-08", "ESA-09"),
+                            labels = c("Unburnt", "Biennial", "Unburnt", 
+                                      "Triennial", "Unburnt", "Annual"))
+
+
+color <- c( "Biennial" = "green4" , "Triennial" = "blue3", "Annual" = "red", "Unburnt" = "black")
+
+linetype <- c("Unburnt"   = "solid",
+        "Biennial"  = "twodash",
+        "Triennial" = "dashed",
+        "Annual"    = "solid")
+ 
+shape_map <- c(
+  "Unburnt"   = 15, 
+  "Biennial"  = 16, 
+  "Triennial" = 17, 
+  "Annual"    = 18 )
+
+```
+
+We conserve only the **2023 data to effect of fire after long time Burnt**.The 2024 data was very different than 2023 because of the drought of the year wich affect the data.
+
+## Effect of fire regime
+
+```{r GLMM fire regime, echo=FALSE}
+
+mod1 <- glmmTMB(CO2_efflux ~ fire_regime + (1|species) + (1|tree_tag) + (1| plot_code),
+  data = stem, family = gaussian(link = "identity"))
+
+emmeans1 <- emmeans(mod1, ~ fire_regime)
+
+result1 <- as.data.frame(pairs(emmeans1, adjust = "tukey"))
+
+estimate1 <- summary(emmeans1)
+
+ggplot(stem, aes(x = fire_regime, y = CO2_efflux, fill = fire_regime)) +
+  geom_violin(trim = FALSE, scale = "width", alpha = 0.7) +
+  labs(title = "Distribution of CO2 efflux per fire regime",
+       y = "CO₂ efflux (µmol·m⁻²·s⁻¹)", x = element_blank(), fill = "Fire Regime") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_fill_manual(values = color)
+```
+ There is no significant difference between the mean rate CO2 efflux of the fire regimes.
+
+```{r GLMM fire regime sp, echo=FALSE}
+mod2 <- glmmTMB(CO2_efflux ~ fire_regime * species + (1|tree_tag) + (1| plot_code),
+  data = stem, family = gaussian(link = "identity"))
+
+emmeans2 <- emmeans(mod2, ~ fire_regime | species)
+
+result2 <- as.data.frame(pairs(emmeans2, adjust = "tukey"))
+result2 <- result2 %>%
+  filter(!is.na(SE) & !is.na(df) & p.value <= 0.05)
+
+estimate2<- summary(emmeans2)
+estimate2<- estimate2%>% filter(!is.na(SE))
+
+ggplot(estimate2, aes(y = species, x = emmean, color = fire_regime)) +
+  geom_point(size = 3) +
+  geom_errorbar(aes(xmin = emmean - SE, xmax = emmean + SE), width = 0.2) +
+  labs(x = "Species", y = "CO2 efflux (µmol/m2.sec)") +
+  theme_classic() +
+  theme(axis.text.y = element_text(size = 10)) +
+  ggtitle("Effect of Fire regime on CO2 Efflux Rate by Species") + scale_colour_manual(values = color)
+
+ggplot(stem, aes(x = species, y = CO2_efflux, fill = fire_regime)) +
+  geom_violin(trim = FALSE, scale = "width", alpha = 0.7, position = position_dodge(width = 0.8)) +
+  labs(x = "Species", y = "CO₂ efflux (µmol·m⁻²·s⁻¹)") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 10)) +
+  ggtitle("Effect of Fire Regime on CO2 Efflux Rate by Species") +
+  scale_fill_manual(values = color)
+
+sp_plot  <- stem %>%
+  filter(species %in% c("Curatella americana", "Myrcia bella", "Vochysia haenkeana"))
+
+ggplot(sp_plot, aes(x = species, y = CO2_efflux, fill = fire_regime)) +
+  geom_violin(trim = FALSE, scale = "width", alpha = 0.7, position = position_dodge(width = 0.8)) +
+  labs(x = "Species", y = "CO₂ efflux (µmol·m⁻²·s⁻¹)") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 10)) +
+  labs(title = "Distribution of CO2 efflux per fire regime",
+       y = "CO₂ efflux (µmol·m⁻²·s⁻¹)", x = "Species" , fill = "Fire Regime") +  scale_fill_manual(values = color)
+
+```
+
+species = Curatella americana:
+
+Unburnt vs Annual: *p-value = 0.037** ==> significant (p < 0.05)
+The mean rate of CO2 efflux is **lower by 0.76 µmol/m².sec in the "Unburnt" plot than the "Annual"** plot.
+
+
+species = Myrcia bella:
+
+Unburnt vs Biennial: **p-value = 0.007** ==> significant (p < 0.05)
+The mean rate of CO2 efflux is **lower by 1.38 µmol/m².sec in the "Unburnt" plot than the "Biennial" plot.**
+
+species = Vochysia haenkeana:
+
+Unburnt vs Biennial: **p-value = 0.0002** ==> significant (p < 0.01)
+The mean rate of CO2 efflux is **higher by 1.9 µmol/m².sec in the "Unburnt" plot than the "Biennial" plot.**
+
+Unburnt vs Annual: **p-value = 0.0263** ==> significant (p < 0.05)
+The mean rate of CO2 efflux is **higher by 1.11 µmol/m².sec in the "Unburnt" plot than the "Annual" plot.**
+
+Biennial vs Trinnial: **p-value = 0.044**8 ==> significant (p < 0.05)
+The mean rate of CO2 efflux is **lower by 0.97 µmol/m².sec in the "Biennial" plot than the "Triennial" plot.**
+
+ 
+**Conclusion on fire effect :**
+
+Observing the estimate mean rate of CO2 efflux of all treees in the Burnt and Unburnt plot, we detected a significant difference between them. So the presence of fire in the plot increase significaly 20% the mean rate of CO2 efflux of the tree and so, increase the mean rate of stem respiration. When we look for the mean rate of each species in Burnt plot, this effect changed. We detected a significant difference between 3 species : Curatella americana, Myrcia bella and Vochysia haenkeana. For Curatella americana and Myrcia bella, the presence of fire increase significaly the mean rate of CO2 efflux (~0.64 µmol/m2.s and ~1.31 µmol/m2.s) and so the stem respiration. On the contrary, the presence of fire causes a decrease of CO2 efflux Vochysia haenkeana (~ - 1.18 µmol/m2.s).
+
+When we look at the different fire regimes in each plot, we observe significant variations in CO2 efflux rates. The Unburnt plot serves as the reference for the model, and the Burnt plots (ESA-05, ESA-07, and ESA-09) show difference significaly on the mean CO2 efflux rates than in the Unburnt plot. This suggests that the fire regime **increase significaly the stem respiration of ~ 40% for triennial regime, ~ 20% for biennial regime and ~ 56% for annual regime.**
+
+In terms of species, the results show that some species exhibit significant differences in CO2 efflux rates across different plots. For Curatella americana, the CO2 efflux rate is higher in the annual plot the Unburnt, with a significant difference of 0.76 µmol/m2.s. For Hancornia speciosa, the efflux rates in Unburnt plot are significantly higher than in triennial plot,  with differences of 0.71 µmol/m2.s. This suggests triennial fire regime cause a decrease of the CO2 efflux and so the stem respiration of the tree in this plot. It's the contrary for Myrcia bella which shows a significant reduction of CO2 efflux in biennial plot (~ -1.31 µmol/m2.s) than in the Unburnt plot. So this fire regime decrease the stem respiration rates for this species. Lastly, Vochysia haenkeana exhibits significantly higher CO2 efflux in the biennial and annual plot tahn in the Unburnt, with significaly differences of 1.80 µmol/m2.s and 1.11  µmol/m2.s. So the presence of fire cause a decrease of stem respiration too for this species. 
+
+In conclusion, the effect of fire on stem respiration depend of the types of species.In globaly, we find a **increase of stem respiration in presence of fire**, but this effect is different between the tree. It's the case for **Curatela americana and Myrcia bella, but not for Vochysia haenkeana**, that's trees exposed to different type of fire regime shows us a decrease of stem respiration. 
+
+Now we has to determinate the relation between wood and bark traits with stem respiration and determinate if fire has a influence on this relation. 
+
+# II - Which bark functional traits most influence the stem respiration?
+
+## Data functionnal traits 
+```{r charging and cleaning bark and wood data}
+# Estimate stem respiration for individuals trees
+stem_pred <- stem %>%
+  mutate(pred_CO2 = predict(mod2, type = "response"))
+stem_pred <- stem_pred %>%
+  group_by(species,tree_tag, fire_regime) %>%
+  summarise(mean_CO2 = mean(pred_CO2), .groups = "drop")
+stem_pred$tree_tag <- as.integer(gsub("[^0-9]", "", stem_pred$tree_tag))
+
+# Bark traits data 
+bark <- read_excel("C:/Users/edoua/OneDrive/Documents/Fac/Cours/UM/Stage M2/Dados/Traits/bark_traits_final.xlsx")
+bark$tree_tag <-as.numeric(bark$tree_tag) 
+
+# Wood traits data 
+wood <- read_excel("C:/Users/edoua/OneDrive/Documents/Fac/Cours/UM/Stage M2/Dados/Traits/wood_density.xlsx")
+wood$tree_tag <-as.numeric(wood$tree_tag)
+
+# List of species for all traits
+traits <- merge(bark, wood, by = "tree_tag")
+traits <- traits[,-c(6,13:21,24:30)]
+traits <- traits %>% 
+  rename(plot_code = plot_code.x,
+         sub_plot = sub_plot.x,
+         family = family.x,
+         species = species.x)
+traits <- traits %>%
+  mutate(fire_regime = plot_code)
+traits$fire_regime <- factor(traits$fire_regime, 
+                                  levels = c("ESA04", "ESA05", "ESA06",
+                                             "ESA07", "ESA08", "ESA09"),
+                                  labels = c("Unburnt", "Biennial", "Unburnt", 
+                                             "Triennial", "Unburnt", "Annual"))
+
+# Stem resp + traits data 
+dados <- merge(stem_pred, traits, by = c("tree_tag"))
+dados <- dados[,-c(5:8,18)]
+dados <- dados %>% 
+  rename(CO2_efflux = mean_CO2,
+         species = species.x,
+         fire_regime = fire_regime.x)
+
+```
+
+### ACP 
+
+```{r ACP }
+data_acp <- dados[,c("SW_D","TB_T","RB_T","B_Den","B_WC","SW_Den")]
+acp <- PCA(data_acp, 
+          scale.unit = TRUE,
+          ncp = 3,
+          graph = FALSE)
+
+# Figure 3
+fviz_pca_var(acp,
+             col.var = "contrib",        
+             gradient.cols = c("green4", "#E7B800", "brown"),
+             repel = TRUE,              
+             title = "ACP of bark and wood functionnal traits")
+
+# Variance explained
+eig <- acp$eig
+round(eig[1:2, 2], 1)  # % Var expliquée par Dim1 et Dim2
+
+# ACP data
+acp_traits <- rownames(acp$var$cor)
+df_traits <- data.frame(
+  Trait        = acp_traits,
+  Corr_Dim1    = round(acp$var$cor[, 1], 2),
+  Corr_Dim2    = round(acp$var$cor[, 2], 2),
+  Contrib_Dim1 = round(acp$var$contrib[, 1], 1),
+  Contrib_Dim2 = round(acp$var$contrib[, 2], 1),
+  Cos2_Dim1    = round(acp$var$cos2[, 1], 2),
+  Cos2_Dim2    = round(acp$var$cos2[, 2], 2),
+  stringsAsFactors = FALSE)
+
+#Extraction of the coords
+coords <- as.data.frame(acp$ind$coord[, 1:2])
+colnames(coords) <- c("Dim1","Dim2")
+dados$Dim1 <- coords$Dim1
+dados$Dim2 <- coords$Dim2
+
+# Models 
+mod3 <- lmer(CO2_efflux ~ Dim1 * Dim2 + (1|species), data = dados)
+plot(simulateResiduals(fittedModel = mod3))
+summary(mod3)
+
+# 9) Clustering sur Dim1–Dim2 (optionnel)
+km <- kmeans(dados[, c("Dim1","Dim2")], centers = 3)
+dados$cluster <- factor(km$cluster)
+fviz_cluster(km, data = dados[, c("Dim1","Dim2")],
+             ellipse.type = "norm", palette = "jco", ggtheme = theme_classic())
+
+```
+
+#### Bark Texture
+```{r ACP Bark Texture}
+# Bark texture  
+data_bt <- cbind(
+  dados[, c("SW_D","SW_Den","TB_T","RB_T","B_Den","B_WC")],
+  B_Tex    = dados$B_Tex)
+
+acp_bt <- PCA(data_bt,
+                scale.unit = TRUE,
+                ncp = 3,
+                graph = FALSE,
+                quali.sup = which(colnames(data_bt) == "B_Tex"))
+# Figure 4
+fviz_pca_biplot(
+  acp_bt,
+  axes         = c(1, 2),
+  habillage    = "B_Tex",            
+  palette      = "jco",                
+  addEllipses   = FALSE,                
+  ellipse.level = 0.95,                
+  label         = "var",               
+  labelsize     = 4,
+  repel         = TRUE,                
+  legend.title  = "Bark Texture") +
+  ggtitle("PCA Biplot – Bark and Wood Traits by Bark texture") +
+  xlab(paste0("Dim1 (", round(acp_bt$eig[1,2], 1), "%)")) +
+  ylab(paste0("Dim2 (", round(acp_bt$eig[2,2], 1), "%)")) +
+  theme_classic()
+```
+
+Corky bark (red circles):
+Cluster in the top-right quadrant (positive Dim1 & Dim2).
+Characterized by fine, dense tissues (high SW_D & SW_Den) with moderate wood thickness and low bark hydration.
+
+Scaly bark (cyan squares):
+Largely along the right side near the center of Dim2.
+Exhibits moderate tissue density (B_Den) and fine thickness (SW_D), without extreme wood thickness or bark water content.
+
+Fissured bark (green triangles):
+Near the origin, slightly below zero on Dim2.
+Represents an intermediate strategy balancing wood volume, tissue density, and moderate bark hydration.
+
+Smooth bark (purple crosses):
+Positioned in the bottom-right (positive Dim1, negative Dim2).
+Strongly associated with high bark water content (B_WC) and fine tissues, but low overall wood volume.
+
+
+Thickness vs. Density: Corky and scaly species invest in dense, fine tissues rather than thick wood.
+Hydration Strategy: Smooth-barked species prioritize bark water storage, likely aiding drought or fire resilience.
+Generalists: Fissured bark species occupy a central niche, balancing mechanical support and water retention.
+
+
+#### Species
+```{r ACP Species}
+# Species
+
+data_sp <- cbind(
+  dados[, c("SW_D","SW_Den","TB_T","RB_T","B_Den","B_WC")],
+  species    = dados$species)
+
+acp_sp <- PCA(data_sp,
+                scale.unit = TRUE,
+                ncp = 3,
+                graph = FALSE,
+                quali.sup = which(colnames(data_sp) == "species"))
+# Figure 6
+fviz_pca_biplot(
+  acp_sp,
+  axes         = c(1, 2),
+  habillage    = "species",            
+  palette      = "jco",                
+  addEllipses   = TRUE,                
+  ellipse.level = 0.95,                
+  label         = "var",               
+  labelsize     = 4,
+  repel         = TRUE,                
+  legend.title  = "species") +
+  ggtitle("PCA Biplot – Bark and Wood Traits by Species") +
+  xlab(paste0("Dim1 (", round(acp_sp$eig[1,2], 1), "%)")) +
+  ylab(paste0("Dim2 (", round(acp_sp$eig[2,2], 1), "%)")) +
+  theme_classic()
+
+# Figure to compare with dataframe traits
+data_7sp <- cbind(
+ traits[, c("SW_D","SW_Den",
+            "TB_T","RB_T","B_Den","B_WC")],
+ species = traits$species)
+
+data_7sp <- data_7sp %>%
+  filter(species %in% c("Curatella americana", "Ferdinandusa elliptica","Hancornia speciosa" , "Myrcia bella","Qualea multiflora","Tachigali paniculata", "Vochysia haenkeana"))
+
+acp_7sp <- PCA(data_7sp,
+               scale.unit = TRUE,
+               ncp = 3,
+               graph = FALSE,
+               quali.sup = which(colnames(data_7sp) == "species"))
+
+fviz_pca_biplot(
+  acp_7sp,
+  axes         = c(1, 2),
+  habillage    = "species",            
+  palette      = "jco",                
+  addEllipses   = TRUE,                
+  ellipse.level = 0.95,                
+  label         = "var",               
+  labelsize     = 4,
+  repel         = TRUE,                
+  legend.title  = "species"
+) +
+  ggtitle("PCA Biplot – Bark and Wood Traits by Species") +
+  xlab(paste0("Dim1 (", round(acp_sp$eig[1,2], 1), "%)")) +
+  ylab(paste0("Dim2 (", round(acp_sp$eig[2,2], 1), "%)")) +
+  theme_classic()
+
+
+```
+
+
+Dim1 contrasts wood thickness traits (TB_T, RB_T on the left) with fine, dense tissues (SW_D, SW_Den, B_Den on the right).
+Dim2 contrasts robust, less-hydrated wood (TB_T, SW_D toward the top) with high bark water content (B_WC toward the bottom).
+
+
+Left side (negative on Dim1) :  Curatella americana and Ferdinandusa elliptica are characterized by thick wood layers (high TB_T, RB_T).
+
+Top right quadrant (positive on Dim1 & Dim2): Tachigali paniculata and Qualea multiflora combine fine/dense tissues with robust wood thickness.
+
+Bottom right quadrant (positive on Dim1, negative on Dim2): Vochysia haenkeana emphasizes very high bark water content (high B_WC).
+
+Center: Myrcia bella and Hancornia speciosa occupy intermediate positions, reflecting a balance between thickness and density strategies.
+
+Thickness vs. Density Gradient: Some species invest in large wood volumes, while others prioritize fine, dense tissues.
+Bark Hydration Gradient: Independent of volume, bark water content defines a separate functional axis relevant to drought or fire tolerance.
+
+These three axes (wood volume, tissue density, bark hydration) represent distinct functional syndromes that can now be linked to stem CO2 efflux to test their influence on respiratory activity.
+
+### Pearson correlation 
+We will look if the relation on the plot unburnt to **eliminate the effect of the fire.**
+
+```{r pearson Unburnt, include = FALSE}
+Unburnt <- dados %>% filter(fire_regime == "Unburnt")
+pearson_unburnt <- Unburnt[, c("CO2_efflux","SW_D","SW_Den","OB_T", "IB_T", "TB_T", "RB_T", "B_Den", "B_WC")]
+pearson_unburnt$RB_T <- log(pearson_unburnt$RB_T)
+
+
+# pearson Matrix 
+cor_matrix_Unburnt <- cor(pearson_unburnt, method = "pearson")
+
+corrplot(cor_matrix_Unburnt, 
+         method = "circle",        
+         type = "upper",          
+         order = "alphabet",        
+         addCoef.col = "black",    
+         tl.col = "black",         
+         tl.srt = 45)
+
+run_tests <- function(df, var1, traits) {
+  sapply(traits, function(tr) {
+    test <- cor.test(df[[var1]], df[[tr]], method = "pearson")
+    c(correlation = unname(test$estimate), p.value = test$p.value)
+  }, simplify = FALSE)
+}
+
+list_traits <- c("SW_D","OB_T","IB_T","TB_T","RB_T","B_Den","B_WC","SW_Den")
+list_data1   <- list(Unburnt = Unburnt)
+results_list1 <- lapply(
+  list_data1,
+  run_tests,
+  var1   = "CO2_efflux",
+  traits = list_traits)
+
+results_df1 <- as.data.frame(results_list1)
+
+df_corr1 <- results_df1 %>%
+  t() %>%                                    # transpose
+  as.data.frame(stringsAsFactors = FALSE) %>%
+  tibble::rownames_to_column(var = "Interaction") %>%
+  tidyr::separate(
+    col   = Interaction,
+    into  = c("fire_regime", "Trait"),
+    sep   = "\\.",
+    extra = "merge"
+  ) %>%
+  dplyr::mutate(
+    corr_num     = as.numeric(correlation),
+    p.value      = as.numeric(p.value),
+    significance = dplyr::case_when(
+      p.value < 0.001 ~ "***",
+      p.value < 0.01  ~ "**",
+      p.value < 0.05  ~ "*",
+      TRUE            ~ ""
+    ),
+    correlation = paste0(sprintf("%.2f", corr_num), significance),
+    fire_regime = factor(fire_regime, levels = names(list_data1))
+  ) %>%
+  dplyr::select(fire_regime, Trait, corr_num, correlation, p.value)
+
+
+ggplot(df_corr1, aes(x = fire_regime, y = Trait, fill = corr_num)) +
+  geom_tile(color = "grey80") +
+  geom_text(aes(label = correlation,
+                fontface = ifelse(p.value < 0.05, "bold", "plain")),
+            size = 4) +
+  scale_fill_gradient2(low = "red",
+                       mid = "white",
+                       high = "green3",
+                       midpoint = 0,
+                       limits = c(-1, 1),
+                       name = "Correlation") +
+  labs(title   = "Pearson corr Traits and CO2 Efflux Unburnt plot",
+       x = NULL,
+       y = "Functional Traits",
+       caption = "* : p-value < 0.05 ") +
+  theme_minimal(base_size = 14) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.grid = element_blank(),
+    plot.caption = element_text(hjust = 0))
+```
+
+**Conclusion :**
+SW_D shows a moderate positive correlation with CO2 efflux (r = 0.59, not significant), suggesting that trees with larger stem diameters tend to release more CO2, although this trend does not reach statistical significance.
+
+B_Den exhibits a weak positive correlation (r = 0.25, n.s.), indicating only a loose association between bark density and respiration.
+
+SW_Den is also weakly positively correlated (r = 0.21, n.s.), implying a minor role for wood density in respiratory efflux.
+
+B_WC has a moderate positive correlation (r = 0.35, n.s.), somewhat contrary to the initial hypothesis but again not significant.
+
+OB_T shows a moderate negative correlation (r = –0.47, n.s.) and TB_T a similar negative correlation (r = –0.60, n.s.), hinting that greater wood thickness may inhibit respiration, though these effects are not statistically supported here.
+
+IB_T is essentially unrelated to CO2 efflux (r = 0.09, n.s.).
+
+RB_T, however, is strongly and significantly negatively correlated (r = –0.82, p < 0.05), demonstrating that a higher relative bark thickness ratio is robustly associated with reduced stem respiration.
+
+In summary, under Unburnt conditions only RB_T exhibits a solid negative relationship with CO2 efflux. The other traits—such as SW_D and TB_T—display consistent trends (higher respiration with larger diameter, lower respiration with thicker wood), but a larger sample size would be needed to confirm their effects.
+
+
+# III - How does the fire regime have influenced the relation between bark functional traits and stem respiration?
+
+#### ACP Fire regime
+
+```{r ACP Fire regime}
+# Fire regime
+data_fg <- cbind(
+  traits[, c("SW_D","SW_Den","TB_T","RB_T","B_Den","B_WC")],
+  fire_regime    = traits$fire_regime)
+
+acp_fg <- PCA(data_fg,
+                scale.unit = TRUE,
+                ncp = 3,
+                graph = FALSE,
+                quali.sup = which(colnames(data_fg) == "fire_regime"))
+
+p <- fviz_pca_ind(
+  acp_fg, 
+  axes         = c(1, 2),
+  geom         = "point",
+  habillage    = "fire_regime",
+  palette      = color,                   
+  addEllipses  = TRUE,             
+  ellipse.level= 0.95,
+  repel        = TRUE,
+  pointsize    = 1,
+  legend.title = "Fire Regime") +  
+  ggtitle("PCA Biplot – Bark and Wood Traits by Fire regime") +
+  labs(
+    x = paste0("Dim1 (", round(acp_fg$eig[1,2],1), "%)"),
+    y = paste0("Dim2 (", round(acp_fg$eig[2,2],1), "%)")) +
+  theme_classic()
+
+p + aes(shape = fire_regime) +
+  scale_shape_manual(
+    name   = "Fire Regime",
+    values = shape_map)
+
+dados2 <- dados %>%
+  filter(fire_regime != "Annual")
+
+mod4 <- lmer(CO2_efflux ~ Dim1 * fire_regime + Dim2 * fire_regime + (1|species), data = dados2)
+
+summary(mod4)
+
+trends_Dim1 <- emtrends(mod4, "fire_regime", var = "Dim1")
+pairs(trends_Dim1,   adjust = "tukey")
+
+trends_Dim2 <- emtrends(mod4, "fire_regime", var = "Dim2")
+pairs(trends_Dim2,   adjust = "tukey")
+
+library(ggplot2)
+
+# Préparer les données avec les prédictions du modèle
+newdata <- expand.grid(
+  Dim1 = seq(min(dados2$Dim1), max(dados2$Dim1), length = 100),
+  fire_regime = levels(dados2$fire_regime),
+  Dim2 = mean(dados2$Dim2)
+)
+newdata$pred <- predict(mod4, newdata)
+
+# Tracer
+ggplot(dados2, aes(x = Dim1, y = CO2_efflux, color = fire_regime)) +
+  geom_point() +
+  geom_line(data = newdata, aes(y = pred), size = 1) +
+  labs(
+    x = "Score Dim1 (épaisseur vs densité)",
+    y = expression(CO[2]~efflux~(µmol~m^{-2}~s^{-1})),
+    color = "Régime de feu"
+  ) +
+  theme_minimal()
+
+
+```
+
+### Pearson Correlation : Unburnt vs Burnt
+
+```{r pearson unb vs Burnt, echo=FALSE}
+Burnt <- dados %>% filter(fire_regime %in% c("Annual", "Biennial", "Triennial"))
+pearson_burnt <- Burnt[, c("CO2_efflux","SW_D","SW_Den","OB_T", "IB_T", "TB_T", "RB_T", "B_Den", "B_WC")]
+pearson_burnt$RB_T <- log(pearson_burnt$RB_T)
+
+# pearson Matrix 
+cor_matrix_Burnt <- cor(pearson_burnt, method = "pearson")
+
+biennial <- dados %>% filter(fire_regime == c("Biennial"))
+pearson_bi <- biennial[, c("CO2_efflux","SW_D","SW_Den","OB_T", "IB_T", "TB_T", "RB_T", "B_Den", "B_WC")]
+pearson_bi$RB_T <- log(pearson_bi$RB_T)
+pearson_bi$B_W <- log(pearson_bi$B_WC)
+
+triennial <- dados %>% filter(fire_regime == c("Triennial"))
+pearson_tri <- triennial[, c("CO2_efflux","SW_D","SW_Den","OB_T", "IB_T", "TB_T", "RB_T", "B_Den", "B_WC")]
+pearson_tri$CO2_efflux <- log(pearson_tri$CO2_efflux)
+pearson_tri$OB_T <- log(pearson_tri$OB_T)
+
+
+list_data2   <- list(Unburnt = Unburnt, 
+                     Biennial = biennial, 
+                     Triennial = triennial)
+
+results_list2 <- lapply(
+  list_data2,
+  run_tests,
+  var1   = "CO2_efflux",
+  traits = list_traits)
+
+results_df2 <- as.data.frame(results_list2)
+
+df_corr2 <- results_df2 %>%
+  t() %>%                                    
+  as.data.frame(stringsAsFactors = FALSE) %>%
+  tibble::rownames_to_column(var = "Interaction") %>%
+  tidyr::separate(
+    col   = Interaction,
+    into  = c("fire_regime", "Trait"),
+    sep   = "\\.",
+    extra = "merge"
+  ) %>%
+  dplyr::mutate(
+    corr_num     = as.numeric(correlation),
+    p.value      = as.numeric(p.value),
+    significance = dplyr::case_when(
+      p.value < 0.001 ~ "***",
+      p.value < 0.01  ~ "**",
+      p.value < 0.05  ~ "*",
+      p.value < 0.1 ~ ".",
+      TRUE            ~ ""),
+    correlation = paste0(sprintf("%.2f", corr_num), significance),
+    fire_regime = factor(fire_regime, levels = names(list_data2))
+  ) %>%
+  dplyr::select(fire_regime, Trait, corr_num, correlation, p.value)
+
+ggplot(df_corr2, aes(x = fire_regime, y = Trait, fill = corr_num)) +
+  geom_tile(color = "grey80") +
+  geom_text(
+    aes(
+      label = correlation,
+      fontface = ifelse(p.value < 0.05, "bold",
+        ifelse(p.value < 0.10, "bold", "plain"))),
+    size = 4) +
+  scale_fill_gradient2(
+    low      = "red",
+    mid      = "white",
+    high     = "green3",
+    midpoint = 0,
+    limits   = c(-1, 1),
+    name     = "Correlation") +
+  labs(
+    title   = "Pearson corr Unburnt, Biennial and Triennial",
+    x       = NULL,
+    y       = "Functional Traits",
+    caption = "*** : p < 0.001   ** : p < 0.01   * : p < 0.05   . : p < 0.10") +
+  theme_minimal(base_size = 14) +
+  theme(
+    axis.text.x  = element_text(angle = 45, hjust = 1),
+    panel.grid   = element_blank(),
+    plot.caption = element_text(hjust = 0))
+
+
+```
+
+Burnt : 
+SW_D is strongly and positively correlated with CO2 efflux (r = 0.65, p < 0.001), suggesting that trees with larger stem diameters tend to release more CO2.
+
+B_Den also shows a significant positive correlation (r = 0.52, p < 0.05), indicating that denser bark is associated with increased CO2 efflux.
+
+SW_Den exhibits a moderate positive correlation (r = 0.39, p < 0.05), supporting a potential role of wood density in stem respiration under fire-affected conditions.
+
+RB_T is negatively and significantly correlated with CO2 efflux (r = –0.57, p < 0.001), suggesting that thicker relative bark reduces CO2 release.
+
+Other traits exhibit weak or non-significant associations:
+TB_T, IB_T, B_WC, and OB_T show weak correlations (r ranging from –0.30 to –0.09), all of which are non-significant (p > 0.05).
+
+Overall, stem diameter, bark density, and relative bark thickness remain the main predictors of CO2 efflux even under Burnt conditions, although correlations appear slightly weaker than in Unburnt plots.
+
+**Conclusions:**
+
+In the absence of fire, the increase of the CO2 efflux is correlate with the increase of the stem diameter which makes sens and reveal a growth strategie of the tree in this plot. At the inverse, a increase of the relative bark thickness (Bark thickness/Stem diameter) causes a decrease of the CO2 efflux and so the respiration. After burning, the driver shifts to total bark density, likely because fire alters the physico-chemical properties of bark and decomposition dynamics.
+
+
+## Trade off 
+
+```{r Trade off}
+# Packages
+library(emmeans)
+library(dplyr)
+library(broom)
+library(ggplot2)
+library(scales)
+library(cowplot)
+library(patchwork)
+library(car)
+
+# Définition des traits à tester
+traits_sign <- c("RB_T", "SW_D", "SW_Den", "B_Den")
+
+# 1) Calcul des pentes et de leur significativité pour chaque trait × régime
+test_stats <- lapply(traits_sign, function(tr) {
+  dados2 %>%
+    group_by(fire_regime) %>%
+    do(
+      tidy(
+        lm(formula(paste0("CO2_efflux ~ ", tr)), data = .),
+        conf.int = TRUE
+      ) %>%
+      filter(term == tr) %>%
+      mutate(traits_sign = tr)
+    )
+}) %>%
+  bind_rows()
+
+result4 <- test_stats %>%
+  filter(p.value <= 0.05)
+
+mod5 <- lm(
+  CO2_efflux ~ (RB_T + SW_D + SW_Den + B_Den) * fire_regime,
+  data = dados2)
+ plot(mod5)
+Anova(mod5, type = "III")
+plot(simulateResiduals(fittedModel = mod5))
+
+trends_RB_T   <- emtrends(mod5, ~ fire_regime, var = "RB_T")
+trends_SW_D   <- emtrends(mod5, ~ fire_regime, var = "SW_D")
+trends_SW_Den <- emtrends(mod5, ~ fire_regime, var = "SW_Den")
+trends_B_Den  <- emtrends(mod5, ~ fire_regime, var = "B_Den")
+
+posthoc_RB_T   <- pairs(trends_RB_T,   adjust = "tukey")
+posthoc_SW_D   <- pairs(trends_SW_D,   adjust = "tukey")
+posthoc_SW_Den <- pairs(trends_SW_Den, adjust = "tukey")
+posthoc_B_Den  <- pairs(trends_B_Den,  adjust = "tukey")
+
+posthoc <- list(
+  RB_T    = posthoc_RB_T,
+  SW_D    = posthoc_SW_D,
+  SW_Den  = posthoc_SW_Den,
+  B_Den   = posthoc_B_Den)
+
+plot_trait <- function(trait_name, x_label, show_y = TRUE) {
+  slopes_df <- dados2 %>%
+    group_by(fire_regime) %>%
+    summarise(
+      fit = list(lm(reformulate(trait_name, response="CO2_efflux"), data=cur_data())),
+      .groups = "drop"
+    ) %>%
+    rowwise() %>%
+    mutate(
+      slope = coef(fit)[2],
+      pval  = summary(fit)$coefficients[2,4],
+      star  = ifelse(pval < 0.05, "*", ""),
+      label = sprintf("%s: %.2f%s", fire_regime, slope, star)
+    ) %>%
+    dplyr::select(fire_regime, label)
+  
+  ggplot(dados2, aes_string(
+    x        = trait_name,
+    y        = "CO2_efflux",
+    color    = "fire_regime",
+    shape    = "fire_regime",
+    linetype = "fire_regime"
+  )) +
+    geom_point(size = 3) +
+    geom_smooth(method = "lm", se = FALSE, size = 1) +
+    scale_color_manual(name="Fire regime",   values=color) +
+    scale_shape_manual(name="Fire regime",   values=shape_map) +
+    scale_linetype_manual(name="Fire regime",values=linetype) +
+    scale_y_continuous(breaks = pretty_breaks(n=5)) +
+    labs(x = x_label, y = NULL) +
+    annotate("label",
+      x     = Inf, y = Inf,
+      label = paste(slopes_df$label, collapse="\n"),
+      hjust = 1.1, vjust = 1.1,
+      size  = 4, fontface = "bold",
+      fill  = "white", label.r = unit(0.2, "lines")
+    ) +
+    theme_classic(base_size = 21) +
+    theme(
+      legend.position = "none",
+      axis.text.y     = if (show_y) element_text() else element_blank(),
+      axis.title.y    = element_blank()
+    )
+}
+
+traits_plot <- list(
+  RB_T    = "Relative bark thickness (%)",
+  SW_D    = "Stem wood diameter (cm)",
+  SW_Den  = "Stem wood density (g/cm³)",
+  B_Den   = "Bark density (g/cm³)"
+)
+
+plots <- imap(traits_plot, function(xlab, tr) {
+  idx    <- which(names(traits_plot) == tr)
+  show_y <- idx %% 2 == 1
+  plot_trait(tr, xlab, show_y)
+})
+
+figure <- (plots$RB_T    + plots$SW_D) /
+          (plots$SW_Den + plots$B_Den) +
+  plot_layout(guides = "collect") +
+  plot_annotation(
+    tag_levels = "A") & 
+  theme(
+    legend.position   = "bottom",
+    legend.title      = element_text(face = "bold"),
+    plot.tag          = element_text(face = "bold", size = 21),
+    plot.tag.position = c(1, 0.5))
+
+y_label <- ggdraw() +
+  draw_label("CO₂ efflux (µmol·m⁻²·s⁻¹)",
+    angle = 90, size = 21) +
+  theme(plot.margin = margin(0,0,0,0))
+
+final_plot <- plot_grid(
+  y_label, figure,
+  ncol       = 2,
+  rel_widths = c(0.05, 0.95)
+)
+
+print(final_plot)
+```
+
+```{r}
+figure <- (plots$SW_Den + plots$B_Den) +
+  plot_layout(guides = "collect") +
+  plot_annotation(
+    tag_levels = NULL) & 
+  theme(
+    legend.position   = "bottom",
+    legend.title      = element_text(face = "bold"),
+    plot.tag          = element_text(face = "bold", size = 21),
+    plot.tag.position = c(1, 0.5))
+
+y_label <- ggdraw() +
+  draw_label("CO₂ efflux (µmol·m⁻²·s⁻¹)",
+    angle = 90, size = 21) +
+  theme(plot.margin = margin(0,0,0,0))
+
+final_plot <- plot_grid(
+  y_label, figure,
+  ncol       = 2,
+  rel_widths = c(0.05, 0.95)
+)
+
+print(final_plot)
+```
+
